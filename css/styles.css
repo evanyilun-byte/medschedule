@@ -77,19 +77,53 @@ button.link {
 .empty .toolbar { justify-content: center; }
 
 /* ---------- forms ---------- */
-.form fieldset { border: 0; padding: 0; margin: 20px 0 0; }
+.form fieldset { border: 0; padding: 0; margin: 20px 0 0; min-width: 0; }
 .form legend { font-weight: 700; font-size: 1.05rem; margin-bottom: 8px; }
 .form label { display: block; margin: 10px 0; font-weight: 500; }
 .form input:not([type=checkbox]):not([type=file]), .form select {
   display: block; width: 100%; margin-top: 4px; min-height: 48px; padding: 8px 12px;
   border: 1px solid var(--border); border-radius: 10px; font: inherit; background: var(--surface); color: var(--text);
 }
-.form input[type=file] { display: block; margin-top: 6px; font: inherit; }
+.form input[type=file] { display: block; max-width: 100%; margin-top: 6px; font: inherit; }
 .form .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .form .check { display: flex; align-items: center; gap: 10px; margin: 6px 0; font-weight: 400; }
 .form .check input { width: 22px; height: 22px; }
 .warnings > span { display: block; font-weight: 500; margin: 12px 0 4px; }
 .photo-preview img { margin-top: 6px; }
+
+/* ---------- label scanning ---------- */
+.scan-box {
+  margin: 12px 0; padding: 16px; border: 2px dashed var(--accent); border-radius: var(--radius);
+  background: #eef6f5; text-align: center;
+}
+.scan-box p { margin: 8px 0 0; }
+.scan-button { font-size: 1.15rem; min-height: 56px; padding: 12px 24px; }
+.form .scan-button { display: inline-flex; margin: 0; }
+.form .scan-button input { display: none; }
+#scan-status { margin-top: 10px; font-weight: 600; }
+#scan-status:empty { display: none; }
+.scan-busy { color: var(--accent); }
+.scan-ok { color: var(--done); }
+.scan-error { color: var(--urgent); }
+.scan-review {
+  display: grid; grid-template-columns: 160px 1fr; gap: 16px; align-items: start;
+  margin: 12px 0; padding: 14px; border: 1px solid var(--soon); border-radius: var(--radius); background: var(--soon-bg);
+}
+.scan-review h3 { margin: 0 0 6px; }
+.scan-review p { margin: 6px 0; }
+.label-photo { width: 100%; border-radius: 10px; border: 1px solid var(--border); }
+.form .needs-check {
+  padding: 8px 10px; margin-left: -10px; margin-right: -10px;
+  border-left: 4px solid var(--soon); background: var(--soon-bg); border-radius: 8px;
+}
+.form .needs-check::before { content: "⚠️ Check this "; color: var(--soon); font-weight: 700; font-size: 0.9rem; }
+.review-confirm {
+  margin-top: 20px !important; padding: 12px; border: 2px solid var(--accent); border-radius: 10px; font-weight: 600 !important;
+}
+@media (max-width: 600px) {
+  .scan-review { grid-template-columns: 1fr; }
+  .label-photo { max-height: 240px; object-fit: contain; }
+}
 hr { border: 0; border-top: 1px solid var(--border); margin: 24px 0 12px; }
 
 /* ---------- medicine list ---------- */

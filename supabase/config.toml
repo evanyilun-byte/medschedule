@@ -1,0 +1,5 @@
+project_id = "medschedule"
+
+[functions.read-label]
+# The app has no user accounts; the function checks ACCESS_CODE instead.
+verify_jwt = false

@@ -1,6 +1,7 @@
 // Node runner: `node tests/run.mjs` (exit code 1 on failure).
 import { run } from './harness.js';
 import './all.test.js';
+import './extract.test.js';
 
 const results = run();
 for (const r of results) console.log(`${r.ok ? '✓' : '✗'} ${r.name}${r.ok ? '' : `\n    ${r.error}`}`);

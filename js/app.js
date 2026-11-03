@@ -5,6 +5,7 @@ import {
 import { buildSchedule, currentSlot, isActive } from './scheduler.js';
 import { refillInfo, refillIcs } from './refill.js';
 import { load, save, blankMedicine, sampleState, emptyState } from './storage.js';
+import { normalizeLabel, labelReadingEnabled, readLabel } from './extract.js';
 
 let state = load();
 const app = document.getElementById('app');
@@ -262,7 +263,15 @@ function viewMedForm(id) {
   <main>
     <form id="med-form" class="card form" data-id="${med.id}">
       <h2>${existing ? 'Edit medicine' : 'Add medicine'} <span class="zh">${existing ? '修改' : '加药'}</span></h2>
-      <p class="muted">Copy the details from the medicine label. Photo reading of labels comes in the next version.</p>
+      ${!existing && labelReadingEnabled()
+        ? `<div class="scan-box">
+            <label class="button primary scan-button">📷 Scan label 拍药单
+              <input type="file" id="scan-input" accept="image/*" capture="environment" hidden></label>
+            <p class="muted">Take a clear, flat photo of the printed label. The details are filled in for you to check — or type them in below.</p>
+            <div id="scan-status" role="status" aria-live="polite"></div>
+          </div>`
+        : '<p class="muted">Copy the details from the medicine label.</p>'}
+      <div id="scan-review" class="scan-review hidden"></div>
 
       <fieldset>
         <legend>Medicine</legend>
@@ -306,6 +315,9 @@ function viewMedForm(id) {
           <input type="number" name="refillLeadDays" min="0" max="60" value="${med.refillLeadDays ?? 7}"></label>
       </fieldset>
 
+      <label class="check review-confirm hidden">
+        <input type="checkbox" name="reviewed"> I have checked every detail against the label 我已核对
+      </label>
       <div class="toolbar">
         <button class="primary" type="submit">Save</button>
         <a class="button" href="#/meds">Cancel</a>
@@ -314,7 +326,71 @@ function viewMedForm(id) {
   </main>`;
 }
 
-function resizeImage(file, max = 320) {
+// ---------- label scanning ----------
+
+const FIELD_LABELS = {
+  nameEn: 'name', strength: 'strength', doseQty: 'amount', unit: 'unit', frequency: 'how often',
+  food: 'food', prnReason: 'when needed', warnings: 'warnings', qtySupplied: 'quantity',
+  dispensedOn: 'date dispensed', endDate: 'end date',
+};
+
+function fieldWrapper(form, name) {
+  const el = form.elements[name];
+  const input = el instanceof RadioNodeList ? el[0] : el;
+  return name === 'warnings' ? form.querySelector('.warnings') : input?.closest('label');
+}
+
+function fillForm(form, values, uncertain) {
+  for (const [name, value] of Object.entries(values)) {
+    if (name === 'warnings') {
+      for (const box of form.querySelectorAll('input[name=warnings]')) box.checked = value.includes(box.value);
+    } else if (form.elements[name]) {
+      form.elements[name].value = value ?? '';
+    }
+  }
+  form.elements.frequency.dispatchEvent(new Event('change'));
+  for (const el of form.querySelectorAll('.needs-check')) el.classList.remove('needs-check');
+  for (const name of uncertain) fieldWrapper(form, name)?.classList.add('needs-check');
+}
+
+async function scanLabel(form, file) {
+  const status = document.getElementById('scan-status');
+  const review = document.getElementById('scan-review');
+  status.className = 'scan-busy';
+  status.textContent = 'Reading the label… 正在读取';
+  try {
+    const dataUrl = await resizeImage(file, 1568, 0.85);
+    const label = await readLabel(dataUrl.split(',')[1], 'image/jpeg', state.settings?.accessCode);
+    const result = normalizeLabel(label, todayStr());
+    if (result.unreadable) {
+      status.className = 'scan-error';
+      status.textContent = 'This does not look like a readable medicine label. Try a clearer photo, or type the details in.';
+      return;
+    }
+    fillForm(form, result.values, result.uncertain);
+    if (!form.dataset.photo) form.dataset.photo = await resizeImage(file);
+    const flagged = [...result.uncertain].map((f) => FIELD_LABELS[f]).filter(Boolean);
+    review.innerHTML = `
+      <img src="${dataUrl}" alt="Scanned label" class="label-photo">
+      <div>
+        <h3>Check before saving <span class="zh">请核对</span></h3>
+        ${result.instructionText ? `<p>Label says: <q>${esc(result.instructionText)}</q></p>` : ''}
+        ${flagged.length ? `<p class="refill-soon">⚠️ Please check closely: <strong>${esc(flagged.join(', '))}</strong></p>` : ''}
+        ${result.notes ? `<p class="muted">Note: ${esc(result.notes)}</p>` : ''}
+      </div>`;
+    review.classList.remove('hidden');
+    const confirmBox = form.querySelector('.review-confirm');
+    confirmBox.classList.remove('hidden');
+    confirmBox.querySelector('input').required = true;
+    status.className = 'scan-ok';
+    status.textContent = '✓ Label read. Check each field against the photo.';
+  } catch (err) {
+    status.className = 'scan-error';
+    status.textContent = err.message;
+  }
+}
+
+function resizeImage(file, max = 320, quality = 0.8) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
@@ -324,7 +400,7 @@ function resizeImage(file, max = 320) {
       canvas.height = Math.round(img.height * scale);
       canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
       URL.revokeObjectURL(img.src);
-      resolve(canvas.toDataURL('image/jpeg', 0.8));
+      resolve(canvas.toDataURL('image/jpeg', quality));
     };
     img.onerror = reject;
     img.src = URL.createObjectURL(file);
@@ -361,6 +437,7 @@ async function submitMedForm(form) {
   }
   const file = fd.get('photo');
   if (file && file.size) med.photo = await resizeImage(file);
+  else if (!med.photo && form.dataset.photo) med.photo = form.dataset.photo; // scanned label
   if (fd.get('removePhoto')) med.photo = '';
 
   state.medicines = existing
@@ -391,6 +468,8 @@ function viewRoutine() {
         ${field('dinner', 'Dinner', '晚餐')}
       </div>
       ${field('bed', 'Bedtime', '睡觉')}
+      ${labelReadingEnabled() ? `<label>Label reading access code (if you were given one)
+        <input name="accessCode" autocomplete="off" value="${esc(state.settings?.accessCode)}"></label>` : ''}
       <div class="toolbar">
         <button class="primary" type="submit">Save</button>
       </div>
@@ -488,6 +567,16 @@ function render() {
     freq.addEventListener('change', sync);
     sync();
   }
+
+  const form = app.querySelector('#med-form');
+  if (form) {
+    app.querySelector('#scan-input')?.addEventListener('change', (e) => {
+      if (e.target.files[0]) scanLabel(form, e.target.files[0]);
+      e.target.value = '';
+    });
+    // Editing a flagged field counts as checking it.
+    form.addEventListener('input', (e) => e.target.closest('.needs-check')?.classList.remove('needs-check'));
+  }
   window.scrollTo(0, 0);
 }
 
@@ -510,7 +599,7 @@ app.addEventListener('click', (e) => {
 
   if (el.id === 'print') window.print();
   else if (el.id === 'sample') {
-    state = sampleState(todayStr());
+    state = { ...sampleState(todayStr()), settings: state.settings };
     persist();
     render();
   } else if (el.id === 'reset') {
@@ -560,6 +649,7 @@ app.addEventListener('submit', (e) => {
     const fd = new FormData(e.target);
     state.person.name = fd.get('name').trim();
     for (const k of ['wake', 'breakfast', 'lunch', 'dinner', 'bed']) state.person.routine[k] = fd.get(k);
+    if (fd.has('accessCode')) state.settings = { ...state.settings, accessCode: fd.get('accessCode').trim() };
     persist();
     location.hash = '#/schedule';
   }

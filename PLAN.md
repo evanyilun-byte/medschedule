@@ -147,3 +147,7 @@ remind_on  = run_out − refill_lead_days        (default 7: time to book polycl
 - Public repo with README, architecture diagram, setup instructions.
 - Write-up: problem, design decisions (especially "AI extracts, never translates"), evaluation results, what you'd do next.
 - 2-minute demo video: photo → review → print → elder phone with audio.
+
+## 12. Future ideas (not in current scope)
+
+- **Dose tracker**: elder's 我吃了 tap shows up live on the caregiver's phone. Smallest version: one table + secret links on the same backend as photo reading, caregiver page shows today's ticks.
