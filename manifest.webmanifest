@@ -1,0 +1,9 @@
+{
+  "name": "MedSchedule 吃药时间表",
+  "short_name": "MedSchedule",
+  "start_url": "./#/elder",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0b5f59",
+  "icons": []
+}

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MedSchedule tests</title>
+  <style>
+    body { font: 16px/1.5 system-ui, sans-serif; margin: 24px; background: #fff; color: #111; }
+    .ok { color: #116b2e; } .fail { color: #b3261e; font-weight: 600; }
+    li { margin: 2px 0; } pre { margin: 0 0 0 1.5em; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1 id="summary">Running…</h1>
+  <ul id="results"></ul>
+  <script type="module">
+    import { run } from './harness.js';
+    import './all.test.js';
+    const results = run();
+    const failed = results.filter((r) => !r.ok);
+    document.getElementById('summary').textContent =
+      `${results.length - failed.length}/${results.length} passed`;
+    document.getElementById('summary').className = failed.length ? 'fail' : 'ok';
+    document.getElementById('results').innerHTML = results
+      .map((r) => `<li class="${r.ok ? 'ok' : 'fail'}">${r.ok ? '✓' : '✗'} ${r.name}${r.ok ? '' : `<pre>${r.error}</pre>`}</li>`)
+      .join('');
+  </script>
+</body>
+</html>
