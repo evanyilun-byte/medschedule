@@ -277,6 +277,14 @@ body.elder-mode { background: #fffdf7; }
 .elder-name { font-size: 2.3rem; font-weight: 800; line-height: 1.2; }
 .elder-dose { font-size: 1.8rem; font-weight: 700; line-height: 1.25; }
 .elder-text .warn { font-size: 1.15rem; margin-top: 6px; }
+.elder-en-name { font-size: 1.05rem; color: var(--muted); margin: -2px 0 4px; }
+.elder-en { font-size: 1.15rem; color: var(--text); }
+.elder-group-head { flex-wrap: wrap; row-gap: 0; }
+.elder-group-head b, .elder-group-head span { font-weight: inherit; white-space: nowrap; }
+.elder-group-head small { flex-basis: 100%; font-size: 1.1rem; font-weight: 500; color: var(--muted); }
+.elder-slots a small { display: block; font-size: 0.8rem; font-weight: 500; opacity: 0.85; }
+.form .setting { margin-top: 24px; }
+.form .setting p { margin: 4px 0 0; font-size: 0.95rem; }
 .elder-buttons { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .elder-buttons:has(> :only-child) { grid-template-columns: 1fr; }
 button.big { min-height: 72px; font-size: 1.8rem; border-radius: var(--radius); border-width: 2px; }

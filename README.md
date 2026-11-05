@@ -17,6 +17,7 @@ MedSchedule turns a person's medicines — from any clinic — into **one large-
 | Sets the daily routine once (meal and bed times) — vague label wording becomes clock times | Taps **🔊 听** to hear the instruction in Mandarin |
 | Prints a large-print A4 schedule for the fridge | Taps **我吃了** to tick off each dose |
 | Gets **refill reminders** before each medicine runs out, and can add them to their phone calendar | Sees a "药快吃完了" banner when a refill is due |
+| Can switch the elder view to a **bilingual version** (Routine page) when a helper who reads English, not Chinese, gives the medicines | Chinese-first screen; the English medicine name is always shown small, for clinic visits |
 
 Try it: open the app and press **Load example patient**.
 

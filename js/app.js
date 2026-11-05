@@ -486,6 +486,12 @@ function viewRoutine() {
         ${field('dinner', 'Dinner', '晚餐')}
       </div>
       ${field('bed', 'Bedtime', '睡觉')}
+      <fieldset class="setting">
+        <legend>Elder view 老人模式</legend>
+        <label class="check"><input type="checkbox" name="elderBilingual" ${state.settings?.elderBilingual ? 'checked' : ''}>
+          Bilingual version (English + 中文) 双语版本</label>
+        <p class="muted">Turn on if a helper or family member who reads English, but not Chinese, uses the elder view. Off: Chinese only, with the English medicine name in small print.</p>
+      </fieldset>
       ${usingAiReader() ? `<label>Label reading access code (if you were given one)
         <input name="accessCode" autocomplete="off" value="${esc(state.settings?.accessCode)}"></label>` : ''}
       <div class="toolbar">
@@ -515,16 +521,20 @@ function viewElder(slotParam) {
     return info && info.status !== 'ok';
   });
 
-  // Chinese only here: English is on the caregiver's schedule.
-  const medRow = (med, slot, detail) => {
+  // Chinese-first. The English drug name is always shown small (for clinic
+  // visits); the bilingual setting adds English instructions for helpers.
+  const bilingual = !!state.settings?.elderBilingual;
+  const medRow = (med, slot, detail, detailEn) => {
     const key = slot ? `${med.id}:${slot}` : null;
     const done = key && !!taken[key];
     return `<div class="elder-row ${done ? 'done' : ''}">
       ${medIcon(med, 'elder-photo')}
       <div class="elder-text">
         <div class="elder-name">${esc(medName(med).zh)}</div>
+        <div class="elder-en-name">${esc(medName(med).en)}</div>
         <div class="elder-dose">${detail}</div>
-        ${warningsHtml(med)}
+        ${bilingual ? `<div class="elder-en">${esc(detailEn)}</div>` : ''}
+        ${warningsHtml(med, bilingual)}
       </div>
       <div class="elder-buttons">
         <button class="big listen" data-speak="${med.id}"${slot ? ` data-slot="${slot}"` : ''}>🔊 听</button>
@@ -535,9 +545,12 @@ function viewElder(slotParam) {
 
   const groupCard = (g) => {
     const h = groupHeading(g);
+    const headEn = h.en || SLOTS[g.slot].en;
     return `<section class="elder-card">
-      <h2 class="elder-group-head">${esc(h.zh || SLOTS[g.slot].zh)} <span>${h.time}</span></h2>
-      ${g.items.map((i) => medRow(i.med, i.slot, `${MISC.TAKE.zh}${esc(zhQuantity(i.med.doseQty, i.med.unit))}`)).join('')}
+      <h2 class="elder-group-head"><b>${esc(h.zh || SLOTS[g.slot].zh)}</b> <span>${h.time}</span>${bilingual ? `<small>${esc(headEn)}</small>` : ''}</h2>
+      ${g.items.map((i) => medRow(i.med, i.slot,
+        `${MISC.TAKE.zh}${esc(zhQuantity(i.med.doseQty, i.med.unit))}`,
+        `${MISC.TAKE.en} ${enQuantity(i.med.doseQty, i.med.unit)}`)).join('')}
     </section>`;
   };
 
@@ -553,16 +566,20 @@ function viewElder(slotParam) {
     <nav class="elder-slots">
       ${slots.map((s) => {
         const all = s.items.every((i) => taken[`${i.med.id}:${i.slot}`]);
-        return `<a href="#/elder/${s.slot}" class="${s.slot === slot && slotParam !== 'prn' ? 'active' : ''}">${SLOTS[s.slot].icon}<br>${SLOTS[s.slot].zh}${all ? ' ✓' : ''}</a>`;
+        return `<a href="#/elder/${s.slot}" class="${s.slot === slot && slotParam !== 'prn' ? 'active' : ''}">${SLOTS[s.slot].icon}<br>${SLOTS[s.slot].zh}${all ? ' ✓' : ''}${bilingual ? `<small>${SLOTS[s.slot].en}</small>` : ''}</a>`;
       }).join('')}
-      ${asNeeded.length ? `<a href="#/elder/prn" class="${slotParam === 'prn' ? 'active' : ''}">⚠️<br>需要时</a>` : ''}
+      ${asNeeded.length ? `<a href="#/elder/prn" class="${slotParam === 'prn' ? 'active' : ''}">⚠️<br>需要时${bilingual ? '<small>If needed</small>' : ''}</a>` : ''}
     </nav>
     <main class="elder-main">
       ${slotParam === 'prn'
         ? `<section class="elder-card">
-            <h2 class="elder-group-head">需要的时候才吃</h2>
-            ${asNeeded.map((med) => medRow(med, null,
-              `${esc((PRN_REASONS[med.prnReason] ?? PRN_REASONS.PRN_GENERIC).zh)}，${MISC.TAKE.zh}${esc(zhQuantity(med.doseQty, med.unit))}`)).join('')}
+            <h2 class="elder-group-head"><b>需要的时候才吃</b>${bilingual ? '<small>Only when needed</small>' : ''}</h2>
+            ${asNeeded.map((med) => {
+              const reason = PRN_REASONS[med.prnReason] ?? PRN_REASONS.PRN_GENERIC;
+              return medRow(med, null,
+                `${esc(reason.zh)}，${MISC.TAKE.zh}${esc(zhQuantity(med.doseQty, med.unit))}`,
+                `${reason.en} · ${MISC.TAKE.en} ${enQuantity(med.doseQty, med.unit)}`);
+            }).join('')}
           </section>`
         : current
           ? groupByTime(current.items).map(groupCard).join('')
@@ -670,7 +687,8 @@ app.addEventListener('submit', (e) => {
     const fd = new FormData(e.target);
     state.person.name = fd.get('name').trim();
     for (const k of ['wake', 'breakfast', 'lunch', 'dinner', 'bed']) state.person.routine[k] = fd.get(k);
-    if (fd.has('accessCode')) state.settings = { ...state.settings, accessCode: fd.get('accessCode').trim() };
+    state.settings = { ...state.settings, elderBilingual: fd.has('elderBilingual') };
+    if (fd.has('accessCode')) state.settings.accessCode = fd.get('accessCode').trim();
     persist();
     location.hash = '#/schedule';
   }
