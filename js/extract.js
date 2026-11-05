@@ -1,9 +1,11 @@
-// Label reading: send a photo to the backend, then turn its answer into
-// medicine form values. Anything unknown, missing or odd is flagged for the
-// caregiver instead of being trusted.
+// Label reading: read a photo (free on-device OCR by default, or the optional
+// AI backend), then turn the answer into medicine form values. Anything
+// unknown, missing or odd is flagged for the caregiver instead of trusted.
 import { FREQUENCIES, FOOD, UNITS, PRN_REASONS, WARNINGS } from './phrases.js';
 import { addDays } from './refill.js';
 import { READ_LABEL_URL } from './config.js';
+import { parseLabelText } from './labelParser.js';
+import { recognizeLabel } from './ocr.js';
 
 // Backend field name → medicine form field name.
 const FIELD_MAP = {
@@ -106,7 +108,7 @@ export function normalizeLabel(label, today) {
   };
 }
 
-export function labelReadingEnabled() {
+export function usingAiReader() {
   return Boolean(READ_LABEL_URL);
 }
 
@@ -116,6 +118,12 @@ const ERRORS = {
   declined: 'This photo could not be read. Please type the details in.',
   'Image too large': 'The photo is too large. Try again with a smaller photo.',
 };
+
+// Free path: on-device OCR + rule-based parser. Returns the backend shape.
+export async function readLabelOnDevice(file, progress) {
+  const { text, confidence } = await recognizeLabel(file, progress);
+  return parseLabelText(text, confidence);
+}
 
 export async function readLabel(imageBase64, mediaType, accessCode) {
   let res;

@@ -121,7 +121,8 @@ remind_on  = run_out − refill_lead_days        (default 7: time to book polycl
 | # | Milestone | Done when |
 |---|---|---|
 | M1 | Manual entry + scheduler + print view | Typed-in medicines produce a correct printable bilingual A4 sheet; scheduler unit-tested |
-| M2 | Photo extraction + review screen | Photo → fields with flags; nothing reaches the schedule unconfirmed |
+| M2 | Photo extraction + review screen | Free on-device OCR (Tesseract.js) + rule-based SG label parser → fields with flags; nothing reaches the schedule unconfirmed. (AI backend kept as optional, unpaid-by-default alternative.) |
+| M2a | Packet numbers | Each medicine has a permanent number written on its packet; shown in elder view, schedule and audio |
 | M3 | Elder view + share link | Elder opens QR link, sees Now/Today, ticks doses |
 | M3a | Refill reminders | Run-out dates correct and tested; shown on caregiver home, printout, elder banner; `.ics` export works |
 | M4 | Audio | Every phrase and nickname plays; composed instructions sound natural |
@@ -151,3 +152,6 @@ remind_on  = run_out − refill_lead_days        (default 7: time to book polycl
 ## 12. Future ideas (not in current scope)
 
 - **Dose tracker**: elder's 我吃了 tap shows up live on the caregiver's phone. Smallest version: one table + secret links on the same backend as photo reading, caregiver page shows today's ticks.
+- **Caregiver voice notes**: caregiver records each instruction in dialect. Deferred: recordings would stay on the caregiver's phone until there is sharing between phones.
+- **Pillbox-filling guide**: weekly checklist for filling a 7-day pillbox from the schedule.
+- **Plain-paper packet labels**: print-and-tape labels for families with printer access.

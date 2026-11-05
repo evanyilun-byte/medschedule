@@ -65,7 +65,21 @@ export const MISC = {
   REFILL_BY: { en: 'Refill by', zh: '前拿药' },
   ASK_PHARMACIST: { en: 'Check with your pharmacist', zh: '请问药剂师' },
   TAKE: { en: 'Take', zh: '吃' },
+  NUMBER_SUFFIX: { en: 'No.', zh: '号药' },
+  WRITE_NUMBER: {
+    en: "Write each medicine's number on its packet with a marker, so it matches the schedule.",
+    zh: '用笔把号码写在药袋上',
+  },
 };
+
+// 1 → 一, 10 → 十, 12 → 十二, 25 → 二十五 (for "三号药").
+export function zhNumber(n) {
+  const digits = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+  if (n < 10) return digits[n];
+  if (n < 20) return `十${n % 10 ? digits[n % 10] : ''}`;
+  if (n < 100) return `${digits[Math.floor(n / 10)]}十${n % 10 ? digits[n % 10] : ''}`;
+  return String(n);
+}
 
 const ZH_DIGITS = ['零', '一', '两', '三', '四', '五', '六', '七', '八', '九', '十'];
 

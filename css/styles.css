@@ -140,6 +140,21 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 24px 0 12px; }
 }
 .pill-placeholder { display: flex; align-items: center; justify-content: center; font-size: 32px; }
 
+/* Packet number: matches the number the caregiver writes on the packet. */
+.med-id { position: relative; flex: none; width: fit-content; }
+.num-badge {
+  position: absolute; top: -8px; left: -8px; min-width: 32px; height: 32px; padding: 0 6px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 999px; border: 2px solid #fff; background: var(--text); color: #fff;
+  font-size: 1.1rem; font-weight: 800; line-height: 1;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+.elder-card .num-badge { min-width: 48px; height: 48px; font-size: 1.7rem; top: -12px; left: -12px; }
+.number-hint {
+  margin: 0 0 12px; padding: 10px 14px; border-radius: 10px;
+  background: var(--surface); border: 1px dashed var(--border);
+}
+
 /* ---------- refill ---------- */
 .refill-card { border-color: var(--soon); background: var(--soon-bg); }
 .refill-list { margin: 0; padding-left: 1.2em; }

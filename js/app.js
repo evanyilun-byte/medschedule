@@ -1,11 +1,11 @@
 import {
   SLOTS, SLOT_ORDER, FREQUENCIES, FOOD, UNITS, PRN_REASONS, WARNINGS, MISC,
-  zhQuantity, enQuantity, timingPhrase,
+  zhQuantity, enQuantity, timingPhrase, zhNumber,
 } from './phrases.js';
 import { buildSchedule, currentSlot, isActive } from './scheduler.js';
 import { refillInfo, refillIcs } from './refill.js';
-import { load, save, blankMedicine, sampleState, emptyState } from './storage.js';
-import { normalizeLabel, labelReadingEnabled, readLabel } from './extract.js';
+import { load, save, blankMedicine, sampleState, emptyState, nextNumber } from './storage.js';
+import { normalizeLabel, usingAiReader, readLabel, readLabelOnDevice } from './extract.js';
 
 let state = load();
 const app = document.getElementById('app');
@@ -55,6 +55,12 @@ function photoHtml(med, cls = 'pill-photo') {
     : `<div class="${cls} pill-placeholder" aria-hidden="true">💊</div>`;
 }
 
+// Photo with the packet number on its corner — the elder matches this
+// number to the one the caregiver wrote on the packet.
+function medIcon(med, cls = 'pill-photo') {
+  return `<div class="med-id">${photoHtml(med, cls)}<span class="num-badge" aria-label="Medicine number ${med.number}">${med.number}</span></div>`;
+}
+
 function warningsHtml(med) {
   return (med.warnings || [])
     .map((w) => WARNINGS[w] && `<span class="warn">${WARNINGS[w].icon} ${WARNINGS[w].zh} <small>${WARNINGS[w].en}</small></span>`)
@@ -74,6 +80,7 @@ function refillLine(med) {
 function speakText(med, slot) {
   const t = slot ? timingPhrase(slot, med.food) : null;
   const parts = [];
+  if (med.number) parts.push(`${zhNumber(med.number)}${MISC.NUMBER_SUFFIX.zh}`);
   if (t) parts.push(t.zh);
   else parts.push(PRN_REASONS[med.prnReason]?.zh ?? PRN_REASONS.PRN_GENERIC.zh);
   parts.push(`${MISC.TAKE.zh}${zhQuantity(med.doseQty, med.unit)}`);
@@ -125,7 +132,7 @@ function refillAlerts() {
     <h2>🔔 Refill soon <span class="zh">药快吃完了</span></h2>
     <ul class="refill-list">
       ${due.map(({ med, info }) => `<li class="refill-${info.status}">
-        <strong>${esc(med.nameEn)}</strong> ${esc(med.nicknameZh)} —
+        <strong>No. ${med.number} ${esc(med.nameEn)}</strong> ${esc(med.nicknameZh)} —
         ${info.daysLeft <= 0 ? 'has run out' : `runs out ${fmtDate(info.runOut).en} (${info.daysLeft} day${info.daysLeft === 1 ? '' : 's'})`}
         <button class="link" data-ics="${med.id}">Add reminder to calendar</button>
       </li>`).join('')}
@@ -144,7 +151,7 @@ function scheduleSheet() {
     const t = timingPhrase(slot, med.food);
     const n = medName(med);
     return `<div class="dose-row">
-      ${photoHtml(med)}
+      ${medIcon(med)}
       <div class="dose-time">${to12h(time)}</div>
       <div class="dose-main">
         <div class="dose-zh">${esc(t.zh)} · ${MISC.TAKE.zh}${esc(zhQuantity(med.doseQty, med.unit))} · ${esc(n.zh)}</div>
@@ -160,7 +167,7 @@ function scheduleSheet() {
     const reason = PRN_REASONS[med.prnReason] ?? PRN_REASONS.PRN_GENERIC;
     const n = medName(med);
     return `<div class="dose-row">
-      ${photoHtml(med)}
+      ${medIcon(med)}
       <div class="dose-main">
         <div class="dose-zh">${esc(reason.zh)} · ${MISC.TAKE.zh}${esc(zhQuantity(med.doseQty, med.unit))} · ${esc(n.zh)}</div>
         <div class="dose-en">${esc(reason.en)} · ${MISC.TAKE.en} ${esc(enQuantity(med.doseQty, med.unit))} · ${esc(n.en)}</div>
@@ -224,13 +231,15 @@ function viewMeds() {
     <div class="toolbar">
       <a class="button primary" href="#/meds/new">+ Add medicine 加药</a>
     </div>
-    ${meds.length === 0 ? '<p class="muted">No medicines yet.</p>' : ''}
+    ${meds.length === 0
+      ? '<p class="muted">No medicines yet.</p>'
+      : `<p class="number-hint">✏️ ${MISC.WRITE_NUMBER.en} <span class="zh">${MISC.WRITE_NUMBER.zh}</span></p>`}
     <ul class="med-list">
       ${meds.map((med) => {
         const info = refillInfo(med, today);
         const inactive = !isActive(med, today);
         return `<li class="card med-card ${inactive ? 'inactive' : ''}">
-          ${photoHtml(med)}
+          ${medIcon(med)}
           <div class="med-info">
             <h3>${esc(med.nameEn)} ${esc(med.strength)} <span class="zh">${esc(med.nicknameZh)}</span></h3>
             <p>${esc(medSummary(med))}</p>
@@ -262,15 +271,15 @@ function viewMedForm(id) {
   return `${nav('#/meds')}
   <main>
     <form id="med-form" class="card form" data-id="${med.id}">
-      <h2>${existing ? 'Edit medicine' : 'Add medicine'} <span class="zh">${existing ? '修改' : '加药'}</span></h2>
-      ${!existing && labelReadingEnabled()
+      <h2>${existing ? `Edit medicine No. ${existing.number}` : 'Add medicine'} <span class="zh">${existing ? '修改' : '加药'}</span></h2>
+      ${!existing
         ? `<div class="scan-box">
             <label class="button primary scan-button">📷 Scan label 拍药单
               <input type="file" id="scan-input" accept="image/*" capture="environment" hidden></label>
-            <p class="muted">Take a clear, flat photo of the printed label. The details are filled in for you to check — or type them in below.</p>
+            <p class="muted">Take a clear, flat, well-lit photo of the printed label. The details are filled in for you to check — or type them in below.${usingAiReader() ? '' : ' The photo stays on this phone.'}</p>
             <div id="scan-status" role="status" aria-live="polite"></div>
           </div>`
-        : '<p class="muted">Copy the details from the medicine label.</p>'}
+        : ''}
       <div id="scan-review" class="scan-review hidden"></div>
 
       <fieldset>
@@ -357,10 +366,14 @@ async function scanLabel(form, file) {
   const status = document.getElementById('scan-status');
   const review = document.getElementById('scan-review');
   status.className = 'scan-busy';
-  status.textContent = 'Reading the label… 正在读取';
+  status.textContent = usingAiReader()
+    ? 'Reading the label… 正在读取'
+    : 'Getting the label reader ready (first time can take a minute)… 正在准备';
   try {
     const dataUrl = await resizeImage(file, 1568, 0.85);
-    const label = await readLabel(dataUrl.split(',')[1], 'image/jpeg', state.settings?.accessCode);
+    const label = usingAiReader()
+      ? await readLabel(dataUrl.split(',')[1], 'image/jpeg', state.settings?.accessCode)
+      : await readLabelOnDevice(file, (pct) => { status.textContent = `Reading the label… ${pct}% 正在读取`; });
     const result = normalizeLabel(label, todayStr());
     if (result.unreadable) {
       status.className = 'scan-error';
@@ -413,7 +426,7 @@ async function submitMedForm(form) {
   const existing = state.medicines.find((m) => m.id === id);
   const num = (v) => (v === '' || v == null ? null : Number(v));
   const med = {
-    ...(existing ?? blankMedicine(todayStr())),
+    ...(existing ?? { ...blankMedicine(todayStr()), number: nextNumber(state.medicines) }),
     id,
     nameEn: fd.get('nameEn').trim(),
     strength: fd.get('strength').trim(),
@@ -468,7 +481,7 @@ function viewRoutine() {
         ${field('dinner', 'Dinner', '晚餐')}
       </div>
       ${field('bed', 'Bedtime', '睡觉')}
-      ${labelReadingEnabled() ? `<label>Label reading access code (if you were given one)
+      ${usingAiReader() ? `<label>Label reading access code (if you were given one)
         <input name="accessCode" autocomplete="off" value="${esc(state.settings?.accessCode)}"></label>` : ''}
       <div class="toolbar">
         <button class="primary" type="submit">Save</button>
@@ -502,7 +515,7 @@ function viewElder(slotParam) {
     const done = !!taken[key];
     const t = timingPhrase(item.slot, item.med.food);
     return `<div class="elder-card ${done ? 'done' : ''}">
-      ${photoHtml(item.med, 'elder-photo')}
+      ${medIcon(item.med, 'elder-photo')}
       <div class="elder-text">
         <div class="elder-name">${esc(medName(item.med).zh)}</div>
         <div class="elder-dose">${esc(t.zh)} ${MISC.TAKE.zh}${esc(zhQuantity(item.med.doseQty, item.med.unit))}</div>
@@ -523,7 +536,7 @@ function viewElder(slotParam) {
     </header>
     ${refillDue.length ? `<button class="elder-refill" data-speak-text="${esc(MISC.REFILL_SOON.zh)}">
       🔔 ${MISC.REFILL_SOON.zh} 🔊
-      <small>${refillDue.map((m) => esc(medName(m).zh)).join('、')} · ${MISC.REFILL_SOON.en}</small>
+      <small>${refillDue.map((m) => `${m.number}${MISC.NUMBER_SUFFIX.zh} ${esc(medName(m).zh)}`).join('、')} · ${MISC.REFILL_SOON.en}</small>
     </button>` : ''}
     <nav class="elder-slots">
       ${slots.map((s) => {
@@ -535,7 +548,7 @@ function viewElder(slotParam) {
     <main class="elder-main">
       ${slotParam === 'prn'
         ? asNeeded.map((med) => `<div class="elder-card">
-            ${photoHtml(med, 'elder-photo')}
+            ${medIcon(med, 'elder-photo')}
             <div class="elder-text">
               <div class="elder-name">${esc(medName(med).zh)}</div>
               <div class="elder-dose">${esc((PRN_REASONS[med.prnReason] ?? PRN_REASONS.PRN_GENERIC).zh)}</div>

@@ -8,12 +8,25 @@ export function emptyState() {
   return { person: { name: '', routine: { ...DEFAULT_ROUTINE } }, medicines: [], taken: {} };
 }
 
+// Each medicine keeps a permanent number that the caregiver writes on its
+// packet. Numbers are never reused or shuffled, so a packet stays correct.
+export function nextNumber(medicines) {
+  return medicines.reduce((max, m) => Math.max(max, m.number || 0), 0) + 1;
+}
+
+export function assignNumbers(medicines) {
+  const out = [];
+  for (const m of medicines) out.push(m.number ? m : { ...m, number: nextNumber([...medicines, ...out]) });
+  return out;
+}
+
 export function load() {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return emptyState();
     const state = { ...emptyState(), ...JSON.parse(raw) };
     state.person.routine = { ...DEFAULT_ROUTINE, ...state.person.routine };
+    state.medicines = assignNumbers(state.medicines);
     return state;
   } catch {
     return emptyState();
@@ -64,13 +77,13 @@ export function sampleState(today) {
   return {
     person: { name: 'Ah Ma', routine: { ...DEFAULT_ROUTINE } },
     taken: {},
-    medicines: [
+    medicines: assignNumbers([
       m({ nameEn: 'Metformin', strength: '500mg', nicknameZh: '降血糖药', frequency: 'BD', food: 'AFTER', qtySupplied: 60, dispensedOn: addDays(today, -24) }),
       m({ nameEn: 'Amlodipine', strength: '5mg', nicknameZh: '降血压药', frequency: 'OM', food: 'NONE', qtySupplied: 90, dispensedOn: addDays(today, -10) }),
       m({ nameEn: 'Omeprazole', strength: '20mg', nicknameZh: '胃药', unit: 'capsule', frequency: 'OD', food: 'BEFORE', qtySupplied: 30, dispensedOn: addDays(today, -28), warnings: ['WARN_SWALLOW'] }),
       m({ nameEn: 'Atorvastatin', strength: '20mg', nicknameZh: '降胆固醇药', frequency: 'ON', food: 'NONE', qtySupplied: 90, dispensedOn: addDays(today, -30) }),
       m({ nameEn: 'Amoxicillin', strength: '500mg', nicknameZh: '消炎药', unit: 'capsule', frequency: 'TDS', food: 'AFTER', qtySupplied: 15, endDate: addDays(today, 4), warnings: ['WARN_COMPLETE'] }),
       m({ nameEn: 'Paracetamol', strength: '500mg', nicknameZh: '止痛药', doseQty: 2, frequency: 'PRN', food: 'AFTER', prnReason: 'PRN_PAIN', qtySupplied: 20 }),
-    ],
+    ]),
   };
 }

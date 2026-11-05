@@ -12,16 +12,21 @@ MedSchedule turns a person's medicines — from any clinic — into **one large-
 
 | Caregiver | Elder |
 |---|---|
-| Enters each medicine from its label (name, dose, how often, before/after food) | Opens **老人模式 Elder view**: sees what to take *now*, in big Chinese text with pill photos |
+| **📷 Scans each label** (free, on the phone) and checks the filled-in details | Opens **老人模式 Elder view**: sees what to take *now*, in big Chinese text with pill photos |
+| Writes each medicine's **number** (①②③) on its packet with a marker — no translating | Matches the big number on screen to the number on the packet |
 | Sets the daily routine once (meal and bed times) — vague label wording becomes clock times | Taps **🔊 听** to hear the instruction in Mandarin |
 | Prints a large-print A4 schedule for the fridge | Taps **我吃了** to tick off each dose |
 | Gets **refill reminders** before each medicine runs out, and can add them to their phone calendar | Sees a "药快吃完了" banner when a refill is due |
 
 Try it: open the app and press **Load example patient**.
 
-## Key design decision: AI extracts, it never translates
+## Key design decision: nothing is machine-translated
 
-All Chinese text and audio come from a fixed, reviewable phrase library ([`js/phrases.js`](js/phrases.js)). Medicines are stored as codes (`BD`, `AFTER`, `WARN_DROWSY`…), so the same label always produces the same Chinese, and every phrase can be checked once by a native speaker or pharmacist. The planned photo-reading step will use AI only to fill in these codes, with a mandatory caregiver review.
+All Chinese text and audio come from a fixed, reviewable phrase library ([`js/phrases.js`](js/phrases.js)). Medicines are stored as codes (`BD`, `AFTER`, `WARN_DROWSY`…), so the same label always produces the same Chinese, and every phrase can be checked once by a native speaker or pharmacist. Label reading only fills in these codes, and the caregiver must confirm them.
+
+## Packet numbers instead of stickers
+
+Most families don't have a sticker printer, and many have no printer at all. Instead, each medicine gets a permanent number. The caregiver writes it on the packet with a marker, and the same number appears on the photo in the elder view, on the printed schedule, and in the audio ("三号药，早餐前，吃一粒…"). The elder only needs to match a number, which works even with low literacy. Numbers are never reused or reshuffled, so a marked packet stays correct.
 
 ## How it works
 
@@ -30,38 +35,34 @@ index.html          app shell
 js/phrases.js       phrase library (EN + 中文), quantity wording
 js/scheduler.js     (medicines, routine, date) → daily schedule   — pure, tested
 js/refill.js        run-out date + reminder date, .ics export      — pure, tested
-js/extract.js       label-reader client + answer checking          — pure, tested
+js/ocr.js           free on-device text reading (Tesseract.js)
+js/labelParser.js   label text → codes, Singapore label rules       — pure, tested
+js/extract.js       answer checking before it reaches the form     — pure, tested
 js/storage.js       browser storage + example patient
 js/app.js           views: schedule/print, medicines, routine, elder view
 css/styles.css      large-print screen, phone and A4 print styles
-tests/              69 unit tests
+tests/              86 unit tests
 ```
 
 - **No build step, no server.** Plain HTML/CSS/JavaScript modules, hosted free on GitHub Pages.
-- **Privacy:** all data stays in the browser on that device (no accounts, nothing sent anywhere).
+- **Privacy:** all data, including label photos, stays in the browser on that device (no accounts, nothing sent anywhere).
+- **Free:** no paid services or API keys.
 - **Scheduling:** `BD + after food` → after breakfast and after dinner; `TDS + before food` → 30 min before each meal; `ON` → bedtime. Times come from the person's routine.
 - **Refills:** `run-out = dispensed date + ⌊quantity ÷ (dose × doses per day)⌋`; reminder 7 days before (adjustable). No reminder for "when needed" medicines or short courses that end first. "I counted…" lets the caregiver correct the count.
 - **Audio:** uses the browser's built-in Mandarin text-to-speech for now.
 
-## Label reading (photo → details)
+## Label reading (photo → details), free and on-device
 
-The caregiver taps **📷 Scan label**, and the form fills itself in from the photo. Then:
+The caregiver taps **📷 Scan label**, and the form fills itself in from the photo:
 
-1. The photo is resized in the browser and sent to a small backend function ([`supabase/functions/read-label`](supabase/functions/read-label/index.ts)), which keeps the Claude API key off the device.
-2. Claude reads the label and returns **only codes from the phrase library** (`BD`, `AFTER`, `WARN_DROWSY`…), plus a list of fields it was unsure about and the instruction text exactly as printed.
-3. [`js/extract.js`](js/extract.js) checks the answer again in the browser. Unknown codes, odd doses and future dates are replaced with safe defaults and flagged (12 tests).
-4. Flagged fields are highlighted ⚠️, the label photo and its wording are shown next to the form, and **nothing can be saved until the caregiver ticks "I have checked every detail against the label"**.
+1. **Read the text:** [Tesseract.js](https://github.com/naptha/tesseract.js), an open-source text reader (OCR), runs inside the browser ([`js/ocr.js`](js/ocr.js)). The photo is greyed and contrast-boosted first. The first scan downloads the reader (~5 MB); later scans take a few seconds. **The photo never leaves the phone.**
+2. **Understand it:** a rule-based parser ([`js/labelParser.js`](js/labelParser.js)) turns label wording into codes. It handles Singapore label styles: "TAKE 1 TABLET(S) 2 TIME(S) A DAY AFTER FOOD", shorthand (OM / ON / BD / TDS / PC / AC / PRN), "QTY: 60 TAB", day-first dates, "FOR 5 DAYS" / "X 5/7", warnings, and common OCR slips (O↔0, I↔1). Deterministic: the same text always gives the same result.
+3. **Check it:** [`js/extract.js`](js/extract.js) replaces anything unknown or odd (impossible doses, future dates) with safe defaults and flags it. Anything the parser couldn't find, or a blurry photo, is flagged too.
+4. **Caregiver confirms:** flagged fields are highlighted ⚠️, the label photo and its instruction wording are shown above the form, and **nothing can be saved until the caregiver ticks "I have checked every detail against the label"**.
 
-If the backend isn't configured (`READ_LABEL_URL` is empty in [`js/config.js`](js/config.js)), the scan button is hidden and the app falls back to typing the details in.
+**Known limits:** curved bottles, glare, handwriting and unusual label layouts read poorly. That's why the review step is compulsory and every field stays editable.
 
-**Deploying the backend** (Supabase free tier):
-
-```bash
-supabase login
-supabase functions deploy read-label --project-ref <your-project-ref> --use-api
-```
-
-Set these secrets in the Supabase dashboard under Edge Functions → Secrets: `ANTHROPIC_API_KEY`, and optionally `ACCESS_CODE`, which callers must enter under Routine to use the reader and which stops strangers from spending your API credit. Then put the function URL into `js/config.js`.
+**Optional AI reader.** [`supabase/functions/read-label`](supabase/functions/read-label/index.ts) is a drop-in alternative that sends the photo to Claude through a small backend (paid API usage, not deployed for this prototype). Setting `READ_LABEL_URL` in [`js/config.js`](js/config.js) switches the Scan button to it, and its answers go through the same checks and review. To deploy: `supabase functions deploy read-label --project-ref <ref> --use-api`, with secrets `ANTHROPIC_API_KEY` and optionally `ACCESS_CODE`.
 
 ## Run locally
 
@@ -82,7 +83,9 @@ See [PLAN.md](PLAN.md) for the full plan.
 - [x] M1 — Manual entry, scheduler, printable bilingual schedule
 - [x] Refill reminders (run-out date, alerts, calendar export)
 - [x] Elder view (Now/slot screens, listen, tick off) — single device
-- [x] M2 — Photo of label → AI extraction → caregiver review (code done; backend deploy pending)
+- [x] M2 — Free on-device label scanning (OCR + rule parser) → caregiver review
+- [x] Packet numbers (write on packet, matched in elder view, schedule and audio)
 - [ ] Share link so the elder's own phone gets the schedule
 - [ ] Recorded/cloud TTS audio clips; dialects (Hokkien, Cantonese)
-- [ ] Evaluation: extraction accuracy on mock labels, usability sessions
+- [ ] Evaluation: scanning accuracy on ~30 mock labels, usability sessions
+- [ ] Future ideas: dose tracker on the caregiver's phone, caregiver voice notes (dialects), pillbox-filling guide

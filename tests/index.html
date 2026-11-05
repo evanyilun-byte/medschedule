@@ -17,6 +17,7 @@
     import { run } from './harness.js';
     import './all.test.js';
     import './extract.test.js';
+    import './parser.test.js';
     const results = run();
     const failed = results.filter((r) => !r.ok);
     document.getElementById('summary').textContent =
