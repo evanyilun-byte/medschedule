@@ -28,7 +28,11 @@ const LabelSchema = z.object({
     .enum(["OM", "OD", "BD", "TDS", "QDS", "ON", "PRN"])
     .nullable()
     .describe("OM once in the morning, OD once daily, BD twice, TDS three times, QDS four times, ON at night, PRN only when needed"),
-  food: z.enum(["AFTER", "BEFORE", "WITH", "NONE"]).describe("NONE if the label says nothing about food"),
+  food: z.enum(["AFTER", "BEFORE", "WITH", "NONE"]).nullable().describe("NONE if the label says nothing about food; null if unreadable"),
+  route: z.enum(["eye", "ear", "nose", "mouth"]).nullable().describe("Only for drops and puffs: where they go"),
+  side: z.enum(["both", "left", "right"]).nullable().describe("Only for eye and ear drops"),
+  max_per_day: z.number().nullable().describe("Maximum doses per day, only if printed (e.g. 'max 8 tablets in 24 hours')"),
+  min_hours: z.number().nullable().describe("Minimum hours between doses, only if printed (e.g. 'every 4-6 hours' → 4)"),
   prn_reason: z
     .enum(["PRN_GENERIC", "PRN_PAIN", "PRN_FEVER", "PRN_BREATH", "PRN_GIDDY"])
     .nullable()
@@ -38,7 +42,7 @@ const LabelSchema = z.object({
   dispensed_on: z.string().nullable().describe("Dispense date as YYYY-MM-DD"),
   duration_days: z.number().nullable().describe("Only if the label gives a course length, e.g. 'for 5 days'"),
   uncertain_fields: z
-    .array(z.enum(["medicine_name", "strength", "dose_qty", "unit", "frequency", "food", "prn_reason", "warnings", "quantity_supplied", "dispensed_on", "duration_days"]))
+    .array(z.enum(["medicine_name", "strength", "dose_qty", "unit", "frequency", "food", "prn_reason", "warnings", "quantity_supplied", "dispensed_on", "duration_days", "route", "side", "max_per_day", "min_hours"]))
     .describe("Fields you could not read clearly or had to interpret"),
   instruction_text: z.string().describe("The dosing instruction exactly as printed on the label"),
   notes: z.string().nullable().describe("Anything important that does not fit the fields above"),
@@ -50,7 +54,7 @@ The output is shown to a family caregiver, who checks every field against the la
 
 Common label abbreviations: OM morning, ON at night, OD once daily, BD twice daily, TDS three times daily, QDS four times daily, PRN when needed, PC after food, AC before food, TAB tablet, CAP capsule.
 
-Read only what the label says. Do not add medical advice. Only use the warning codes for warnings actually printed on the label.`;
+Never invent a maximum dose or interval: fill max_per_day and min_hours only when the label prints them. Read only what the label says. Do not add medical advice. Only use the warning codes for warnings actually printed on the label.`;
 
 function corsHeaders(origin: string | null) {
   const allowed = (Deno.env.get("ALLOWED_ORIGINS")?.split(",") ?? DEFAULT_ORIGINS).map((o) => o.trim());

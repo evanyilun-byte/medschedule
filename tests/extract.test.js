@@ -48,10 +48,31 @@ test('label: missing name is flagged', () => {
   eq(norm({ medicine_name: null }).uncertain.has('nameEn'), true);
 });
 
-test('label: unknown codes fall back to defaults and are flagged', () => {
-  const r = norm({ frequency: 'Q6H', food: 'SOMETIMES', unit: 'spoon' });
-  eq([r.values.frequency, r.values.food, r.values.unit], ['BD', 'NONE', 'tablet']);
-  eq(['frequency', 'food', 'unit'].every((f) => r.uncertain.has(f)), true);
+test('label: unknown codes are left BLANK (not a plausible default) and flagged', () => {
+  const r = norm({ frequency: 'Q6H', food: 'SOMETIMES', unit: 'spoon', dose_qty: null });
+  eq([r.values.frequency, r.values.food, r.values.unit, r.values.doseQty], ['', '', '', null]);
+  eq(['frequency', 'food', 'unit', 'doseQty'].every((f) => r.uncertain.has(f)), true);
+});
+
+test('label: drops need where they go; eye and ear also need a side', () => {
+  const ok = norm({ unit: 'drop', route: 'eye', side: 'left' });
+  eq([ok.values.route, ok.values.side, ok.uncertain.has('route')], ['eye', 'left', false]);
+  const noRoute = norm({ unit: 'drop', route: null });
+  eq([noRoute.values.route, noRoute.uncertain.has('route')], ['', true]);
+  const noSide = norm({ unit: 'drop', route: 'ear', side: null });
+  eq([noSide.values.side, noSide.uncertain.has('side')], ['', true]);
+  eq(norm({ unit: 'puff', route: 'nose' }).values.side, '');
+  eq(norm({ unit: 'tablet', route: 'eye' }).values.route, ''); // tablets have no route
+});
+
+test('label: when-needed limits are kept only if sensible, and always flagged', () => {
+  const r = norm({ frequency: 'PRN', prn_reason: 'PRN_PAIN', max_per_day: 8, min_hours: 4 });
+  eq([r.values.maxPerDay, r.values.minHours], [8, 4]);
+  eq([r.uncertain.has('maxPerDay'), r.uncertain.has('minHours')], [true, true]);
+  const none = norm({ frequency: 'PRN', prn_reason: 'PRN_PAIN', max_per_day: null });
+  eq([none.values.maxPerDay, none.uncertain.has('maxPerDay')], [null, true]); // missing limit is flagged
+  eq(norm({ frequency: 'PRN', max_per_day: 500 }).values.maxPerDay, null);
+  eq(norm({ max_per_day: 8 }).values.maxPerDay, null); // only for when-needed medicines
 });
 
 test('label: odd doses are flagged (0, negative, 0.3, huge)', () => {

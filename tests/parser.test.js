@@ -77,6 +77,41 @@ test('parser: antibiotic course length and warning', () => {
   eq(r.warnings, ['WARN_COMPLETE']);
 });
 
+test('parser: eye drops — unit, both eyes, no food flag', () => {
+  const r = parseLabelText('TIMOLOL 0.5% EYE DROPS\nINSTIL 1 DROP TO BOTH EYES TWICE A DAY\nQTY 1 BOTTLE');
+  eq([r.medicine_name, r.strength, r.dose_qty, r.unit, r.route, r.side, r.frequency, r.food], ['Timolol', '0.5%', 1, 'drop', 'eye', 'both', 'BD', 'NONE']);
+  eq(r.uncertain_fields, []);
+});
+
+test('parser: ear drop side, and a missing side is flagged', () => {
+  eq(parseLabelText('OTODEX EAR DROPS\nPUT 2 DROPS IN RIGHT EAR 3 TIMES A DAY').side, 'right');
+  const r = parseLabelText('CIPRO 0.3% DROPS\nINSTIL 1 DROP IN EYE 4 TIMES A DAY');
+  eq([r.route, r.side, r.uncertain_fields.includes('side')], ['eye', null, true]);
+});
+
+test('parser: inhaler vs nasal spray', () => {
+  eq(parseLabelText('SALBUTAMOL 100MCG INHALER\nINHALE 2 PUFFS WHEN NEEDED').route, 'mouth');
+  eq(parseLabelText('MOMETASONE 50MCG NASAL SPRAY\nSPRAY 2 PUFFS INTO EACH NOSTRIL ONCE A DAY').route, 'nose');
+  eq(parseLabelText('FLUTICASONE 250MCG\nUSE 2 PUFFS TWICE A DAY').uncertain_fields.includes('route'), true);
+});
+
+test('parser: when-needed maximum and interval, as printed', () => {
+  const r = parseLabelText('PARACETAMOL 500MG TAB\nTAKE 2 TABLETS EVERY 4-6 HOURS WHEN NECESSARY FOR PAIN\nMAX 8 TABS IN 24 HOURS\n20 TABLETS');
+  eq([r.frequency, r.max_per_day, r.min_hours, r.quantity_supplied], ['PRN', 8, 4, 20]);
+  eq(parseLabelText('PANADOL 500MG\nTAKE 1 TAB WHEN NEEDED. DO NOT TAKE MORE THAN 4 TABLETS A DAY. AT LEAST 6 HOURS APART').max_per_day, 4);
+  eq(parseLabelText('PANADOL 500MG\nTAKE 1 TAB WHEN NEEDED. AT LEAST 6 HOURS APART').min_hours, 6);
+});
+
+test('parser: when-needed medicine with no printed limit is flagged', () => {
+  const r = parseLabelText('PANADOL 500MG\nTAKE 1 TAB WHEN NEEDED FOR FEVER');
+  eq([r.max_per_day, r.uncertain_fields.includes('max_per_day')], [null, true]);
+});
+
+test('parser: unreadable food on a scheduled tablet is left blank, not "any time"', () => {
+  const r = parseLabelText('ASPIRIN 100MG\nTAKE 1 TABLET ONCE A DAY');
+  eq([r.food, r.uncertain_fields.includes('food')], [null, true]);
+});
+
 test('parser: night-time dose and warnings', () => {
   const r = parseLabelText(NIGHT_DROWSY);
   eq(r.frequency, 'ON');
@@ -111,7 +146,7 @@ test('parser: food wording variants', () => {
   eq(food('BEFORE FOOD'), 'BEFORE');
   eq(food('ON AN EMPTY STOMACH'), 'BEFORE');
   eq(food('WITH FOOD'), 'WITH');
-  eq(food(''), 'NONE');
+  eq(food(''), null); // not stated → blank for the caregiver to choose
 });
 
 test('parser: dose words and halves', () => {
@@ -203,7 +238,7 @@ test('migrate: unknown active profile falls back to the first; junk gives a fres
 
 test('example patient numbers continue after other household members', () => {
   const meds = sampleMedicines('2026-11-05', [{ number: 1 }, { number: 2 }, { number: 3 }]);
-  eq(meds.map((m) => m.number), [4, 5, 6, 7, 8, 9]);
+  eq(meds.map((m) => m.number), [4, 5, 6, 7, 8, 9, 10]);
 });
 
 test('numbers stay retired after medicines are removed', () => {

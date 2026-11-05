@@ -1,6 +1,6 @@
 import {
   SLOTS, SLOT_ORDER, FREQUENCIES, FOOD, UNITS, PRN_REASONS, WARNINGS, MISC,
-  zhQuantity, enQuantity, timingPhrase, zhNumber,
+  zhQuantity, enQuantity, timingPhrase, zhNumber, ROUTES, SIDES, needsRoute, doseAction, limitPhrase, takenWords,
 } from './phrases.js';
 import { buildSchedule, isActive, groupByTime, elderNow, groupStatus } from './scheduler.js';
 import { refillInfo, refillIcs } from './refill.js';
@@ -93,8 +93,9 @@ function speakText(med, slot) {
   if (med.number) parts.push(`${zhNumber(med.number)}${MISC.NUMBER_SUFFIX.zh}`);
   if (t) parts.push(t.zh);
   else parts.push(PRN_REASONS[med.prnReason]?.zh ?? PRN_REASONS.PRN_GENERIC.zh);
-  parts.push(`${MISC.TAKE.zh}${zhQuantity(med.doseQty, med.unit)}`);
+  parts.push(doseAction(med).zh);
   parts.push(med.nicknameZh || med.nameEn);
+  if (!slot && limitPhrase(med)) parts.push(limitPhrase(med).zh);
   for (const w of med.warnings || []) if (WARNINGS[w]) parts.push(WARNINGS[w].zh);
   return parts.join('，') + '。';
 }
@@ -172,9 +173,9 @@ function scheduleSheet() {
     return `<div class="dose-row">
       ${medIcon(med)}
       <div class="dose-main">
-        <div class="dose-zh"><span class="dose-name">${esc(n.zh)}</span> <span class="dose-qty">${esc(zhQuantity(med.doseQty, med.unit))}</span></div>
+        <div class="dose-zh"><span class="dose-name">${esc(n.zh)}</span> <span class="dose-qty">${esc(doseAction(med).zh)}</span></div>
         ${extra}
-        <div class="dose-en">${esc(n.en)} · ${esc(enQuantity(med.doseQty, med.unit))}</div>
+        <div class="dose-en">${esc(n.en)} · ${esc(doseAction(med).en)}</div>
       </div>
       <div class="dose-warn">${warningsHtml(med)}</div>
       ${extra ? '' : '<div class="tickbox" aria-hidden="true"></div>'}
@@ -191,7 +192,8 @@ function scheduleSheet() {
 
   const prnRow = (med) => {
     const reason = PRN_REASONS[med.prnReason] ?? PRN_REASONS.PRN_GENERIC;
-    return row(med, `<div class="dose-reason">${esc(reason.zh)} <small>${esc(reason.en)}</small></div>`);
+    const limit = limitPhrase(med);
+    return row(med, `<div class="dose-reason">${esc(reason.zh)} <small>${esc(reason.en)}</small></div>${limit ? `<div class="dose-limit">⚠️ ${esc(limit.zh)} <small>${esc(limit.en)}</small></div>` : ''}`);
   };
 
   return `<article class="sheet">
@@ -238,7 +240,9 @@ function viewSchedule() {
 function medSummary(med) {
   const f = FREQUENCIES[med.frequency];
   const food = med.frequency === 'PRN' ? '' : med.food === 'NONE' ? '' : ` · ${FOOD[med.food].en.toLowerCase()} food`;
-  return `${enQuantity(med.doseQty, med.unit)} · ${f.en.toLowerCase()}${food}`;
+  const a = doseAction(med);
+  const limit = med.frequency === 'PRN' ? limitPhrase(med) : null;
+  return `${a.en} · ${f.en.toLowerCase()}${food}${limit ? ` · ${limit.en}` : ''}${a.complete ? '' : ' · ⚠️ choose where it goes'}`;
 }
 
 function viewMeds() {
@@ -281,10 +285,12 @@ function viewMeds() {
   </main>`;
 }
 
+// Every list starts on "choose": nothing is pre-picked for the caregiver.
 function options(map, selected, label = (v) => `${v.en} · ${v.zh}`) {
-  return Object.entries(map)
-    .map(([k, v]) => `<option value="${k}" ${k === selected ? 'selected' : ''}>${esc(label(v, k))}</option>`)
-    .join('');
+  return `<option value="" ${selected ? '' : 'selected'} disabled>— choose 请选择 —</option>`
+    + Object.entries(map)
+      .map(([k, v]) => `<option value="${k}" ${k === selected ? 'selected' : ''}>${esc(label(v, k))}</option>`)
+      .join('');
 }
 
 function viewMedForm(id) {
@@ -319,13 +325,24 @@ function viewMedForm(id) {
       <fieldset>
         <legend>How to take it</legend>
         <div class="row">
-          <label>Amount each time <input name="doseQty" type="number" min="0.5" step="0.5" required value="${med.doseQty}"></label>
-          <label>Unit <select name="unit">${options(UNITS, med.unit, (v, k) => `${v.en[1]} · ${v.zh}`)}</select></label>
+          <label>Amount each time <input name="doseQty" type="number" min="0.5" step="0.5" required value="${med.doseQty ?? ''}" placeholder="e.g. 1"></label>
+          <label>Unit <select name="unit" required>${options(UNITS, med.unit, (v, k) => `${v.en[1]} · ${v.zh}`)}</select></label>
         </div>
-        <label>How often <select name="frequency">${options(FREQUENCIES, med.frequency)}</select></label>
-        <label>Food <select name="food">${options(FOOD, med.food, (v, k) => k === 'NONE' ? 'Not specified / any time' : `${v.en} food · 饭${v.zh}`)}</select></label>
-        <label class="prn-only">If only when needed — for what?
-          <select name="prnReason">${options(PRN_REASONS, med.prnReason)}</select></label>
+        <div class="row route-only">
+          <label>Where does it go? <select name="route" required>${options(ROUTES, med.route)}</select></label>
+          <label class="side-only">Which side? <select name="side" required>${options(SIDES, med.side)}</select></label>
+        </div>
+        <label>How often <select name="frequency" required>${options(FREQUENCIES, med.frequency)}</select></label>
+        <label>Food <select name="food" required>${options(FOOD, med.food, (v, k) => k === 'NONE' ? 'Not stated on label / any time' : `${v.en} food · 饭${v.zh}`)}</select></label>
+        <div class="prn-only">
+          <label>If only when needed — for what?
+            <select name="prnReason" required>${options(PRN_REASONS, med.prnReason)}</select></label>
+          <div class="row">
+            <label>Most per day (from label) <input name="maxPerDay" type="number" min="1" max="50" step="1" value="${med.maxPerDay ?? ''}" placeholder="e.g. 8"></label>
+            <label>Hours apart, at least (from label) <input name="minHours" type="number" min="1" max="48" step="1" value="${med.minHours ?? ''}" placeholder="e.g. 4"></label>
+          </div>
+          <p class="muted field-note">Copy these from the label. If the label gives no limit, ask the pharmacist — don't guess.</p>
+        </div>
         <div class="warnings">
           <span>Warnings on label</span>
           ${Object.entries(WARNINGS).map(([k, w]) => `<label class="check"><input type="checkbox" name="warnings" value="${k}" ${med.warnings.includes(k) ? 'checked' : ''}> ${w.icon} ${w.en} · ${w.zh}</label>`).join('')}
@@ -362,7 +379,8 @@ function viewMedForm(id) {
 const FIELD_LABELS = {
   nameEn: 'name', strength: 'strength', doseQty: 'amount', unit: 'unit', frequency: 'how often',
   food: 'food', prnReason: 'when needed', warnings: 'warnings', qtySupplied: 'quantity',
-  dispensedOn: 'date dispensed', endDate: 'end date',
+  dispensedOn: 'date dispensed', endDate: 'end date', route: 'where it goes', side: 'which side',
+  maxPerDay: 'most per day', minHours: 'hours apart',
 };
 
 function fieldWrapper(form, name) {
@@ -379,7 +397,8 @@ function fillForm(form, values, uncertain) {
       form.elements[name].value = value ?? '';
     }
   }
-  form.elements.frequency.dispatchEvent(new Event('change'));
+  syncMedForm(form);
+  if (values.side != null && form.elements.side) form.elements.side.value = values.side;
   for (const el of form.querySelectorAll('.needs-check')) el.classList.remove('needs-check');
   for (const name of uncertain) fieldWrapper(form, name)?.classList.add('needs-check');
 }
@@ -425,6 +444,26 @@ async function scanLabel(form, file) {
   }
 }
 
+// Show only the fields that apply, and disable the rest so a hidden
+// required field can't block saving (and isn't saved).
+function syncMedForm(form) {
+  const show = (sel, on) => {
+    const el = form.querySelector(sel);
+    el.classList.toggle('hidden', !on);
+    for (const c of el.querySelectorAll('input, select')) c.disabled = !on;
+  };
+  const unit = form.elements.unit.value;
+  show('.route-only', needsRoute(unit));
+  // Only the routes that fit this unit (no "eye" for an inhaler).
+  for (const o of form.elements.route.options) {
+    const r = ROUTES[o.value];
+    o.hidden = !!r && r.for !== 'both' && r.for !== unit;
+  }
+  if (form.elements.route.selectedOptions[0]?.hidden) form.elements.route.value = '';
+  show('.side-only', needsRoute(unit) && !!ROUTES[form.elements.route.value]?.sided);
+  show('.prn-only', form.elements.frequency.value === 'PRN');
+}
+
 function resizeImage(file, max = 320, quality = 0.8) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -457,7 +496,12 @@ async function submitMedForm(form) {
     unit: fd.get('unit'),
     frequency: fd.get('frequency'),
     food: fd.get('food'),
-    prnReason: fd.get('prnReason'),
+    // Hidden (disabled) fields are not in the form data: they don't apply.
+    prnReason: fd.get('prnReason') ?? '',
+    route: fd.get('route') ?? '',
+    side: fd.get('side') ?? '',
+    maxPerDay: num(fd.get('maxPerDay')),
+    minHours: num(fd.get('minHours')),
     warnings: fd.getAll('warnings'),
     startDate: fd.get('startDate'),
     endDate: fd.get('endDate'),
@@ -590,7 +634,7 @@ function viewElder(slotParam) {
   // Chinese-first. The English drug name is always shown small (for clinic
   // visits); the bilingual setting adds English instructions for helpers.
   const bilingual = !!state.settings?.elderBilingual;
-  const medRow = (med, slot, detail, detailEn) => {
+  const medRow = (med, slot, detail, detailEn, limit, early) => {
     const key = slot ? `${med.id}:${slot}` : null;
     const done = key && !!taken[key];
     return `<div class="elder-row ${done ? 'done' : ''}">
@@ -600,11 +644,12 @@ function viewElder(slotParam) {
         <div class="elder-en-name">${esc(medName(med).en)}</div>
         <div class="elder-dose">${detail}</div>
         ${bilingual ? `<div class="elder-en">${esc(detailEn)}</div>` : ''}
+        ${limit ? `<div class="elder-limit">⚠️ ${esc(limit.zh)}${bilingual ? `<small>${esc(limit.en)}</small>` : ''}</div>` : ''}
         ${warningsHtml(med, bilingual)}
       </div>
       <div class="elder-buttons">
         <button class="big listen" data-speak="${med.id}"${slot ? ` data-slot="${slot}"` : ''}>🔊 听</button>
-        ${key ? `<button class="big take" data-take="${key}">${done ? '✓ 吃了' : '我吃了'}</button>` : ''}
+        ${key ? `<button class="big take${early && !done ? ' take-later' : ''}" data-take="${key}"${early && !done ? ' data-early="1"' : ''}${done ? ' data-done="1"' : ''}>${done ? takenWords(med.unit).done : takenWords(med.unit).ask}</button>` : ''}
       </div>
     </div>`;
   };
@@ -618,8 +663,7 @@ function viewElder(slotParam) {
         ? `<p class="pill pill-now">现在吃${bilingual ? ' · Take now' : ''}</p>`
         : `<p class="pill pill-later">还没到时间${bilingual ? ' · Not yet' : ''}</p>`) : ''}
       ${g.items.map((i) => medRow(i.med, i.slot,
-        `${MISC.TAKE.zh}${esc(zhQuantity(i.med.doseQty, i.med.unit))}`,
-        `${MISC.TAKE.en} ${enQuantity(i.med.doseQty, i.med.unit)}`)).join('')}
+        esc(doseAction(i.med).zh), doseAction(i.med).en, null, groupStatus(g.time, now) === 'later')).join('')}
     </section>`;
   };
 
@@ -652,8 +696,8 @@ function viewElder(slotParam) {
             ${asNeeded.map((med) => {
               const reason = PRN_REASONS[med.prnReason] ?? PRN_REASONS.PRN_GENERIC;
               return medRow(med, null,
-                `${esc(reason.zh)}，${MISC.TAKE.zh}${esc(zhQuantity(med.doseQty, med.unit))}`,
-                `${reason.en} · ${MISC.TAKE.en} ${enQuantity(med.doseQty, med.unit)}`);
+                `${esc(reason.zh)}，${esc(doseAction(med).zh)}`,
+                `${reason.en} · ${doseAction(med).en}`, limitPhrase(med));
             }).join('')}
           </section>`
         : `${auto && nowInfo.missed.length ? `<div class="elder-missed">
@@ -682,11 +726,10 @@ function render() {
   else if (route === 'elder') app.innerHTML = viewElder(param);
   else app.innerHTML = viewSchedule();
 
-  const freq = app.querySelector('select[name=frequency]');
-  if (freq) {
-    const sync = () => app.querySelector('.prn-only').classList.toggle('hidden', freq.value !== 'PRN');
-    freq.addEventListener('change', sync);
-    sync();
+  const medForm = app.querySelector('#med-form');
+  if (medForm) {
+    medForm.addEventListener('change', () => syncMedForm(medForm));
+    syncMedForm(medForm);
   }
 
   const form = app.querySelector('#med-form');
@@ -699,6 +742,32 @@ function render() {
     form.addEventListener('input', (e) => e.target.closest('.needs-check')?.classList.remove('needs-check'));
   }
   window.scrollTo(0, 0);
+}
+
+// A large two-button question for the elder view; the browser's own
+// confirm() box is small and shows in the phone's language.
+function askElder(zh, en, yes, no) {
+  return new Promise((resolve) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'elder-dialog';
+    wrap.innerHTML = `<div class="elder-dialog-box" role="alertdialog" aria-modal="true" aria-labelledby="ask-q">
+      <p id="ask-q" class="ask-q">${esc(zh)}</p><p class="ask-en">${esc(en)}</p>
+      <div class="ask-buttons"><button class="big ask-no">${esc(no)}</button><button class="big ask-yes">${esc(yes)}</button></div>
+    </div>`;
+    const done = (ok) => {
+      wrap.remove();
+      document.removeEventListener('keydown', onKey);
+      resolve(ok);
+    };
+    const onKey = (e) => e.key === 'Escape' && done(false);
+    wrap.addEventListener('click', (e) => {
+      if (e.target.closest('.ask-yes')) done(true);
+      else if (e.target.closest('.ask-no') || e.target === wrap) done(false);
+    });
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(wrap);
+    wrap.querySelector('.ask-no').focus(); // the safe answer is the default
+  });
 }
 
 function downloadIcs(med) {
@@ -770,12 +839,19 @@ app.addEventListener('click', (e) => {
   else if (d.speak) speak(speakText(findMed(d.speak), d.slot));
   else if (d.speakText) speak(d.speakText);
   else if (d.take) {
-    if (isAutoElderRoute()) elderHold = elderShown.slot ?? null; // don't jump right after a tap
-    const today = todayStr();
-    const day = (P().taken = { [today]: P().taken[today] || {} })[today]; // keep only today
-    day[d.take] = !day[d.take];
-    persist();
-    render();
+    const toggle = () => {
+      if (isAutoElderRoute()) elderHold = elderShown.slot ?? null; // don't jump right after a tap
+      const today = todayStr();
+      const day = (P().taken = { [today]: P().taken[today] || {} })[today]; // keep only today
+      day[d.take] = !day[d.take];
+      persist();
+      render();
+    };
+    // Ticking early, or unticking, is easy to do by accident and makes a dose
+    // look taken (or not) when it wasn't: ask first, in large type.
+    if (d.early) askElder('还没到时间，确定用过了吗？', 'Not time yet — was it really taken?', '是 Yes', '不是 No').then((ok) => ok && toggle());
+    else if (d.done) askElder('取消打勾吗？', 'Untick this dose?', '取消打勾 Untick', '不要 Keep').then((ok) => ok && toggle());
+    else toggle();
   } else if (d.count) {
     const med = findMed(d.count);
     const n = prompt(`How many ${UNITS[med.unit].en[1]} of ${med.nameEn} are left?`);
@@ -830,6 +906,7 @@ document.addEventListener('pointerdown', () => { lastTouch = performance.now(); 
 
 function refreshElderNow() {
   if (!isAutoElderRoute()) return; // rule 2
+  if (document.querySelector('.elder-dialog')) return; // a question is open
   if (performance.now() - lastTouch < 30000) return; // rule 3
   if ('speechSynthesis' in window && speechSynthesis.speaking) return; // rule 3
   const { key } = elderNowInfo();

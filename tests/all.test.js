@@ -1,7 +1,7 @@
 import { test, eq } from './harness.js';
 import { buildSchedule, doseTime, dosesPerDay, currentSlot, DEFAULT_ROUTINE, toHHMM, groupByTime, elderNow, groupStatus } from '../js/scheduler.js';
 import { refillInfo, addDays, daysBetween } from '../js/refill.js';
-import { zhQuantity, enQuantity, timingPhrase, FREQUENCIES, FOOD } from '../js/phrases.js';
+import { zhQuantity, enQuantity, timingPhrase, FREQUENCIES, FOOD, doseAction, limitPhrase, takenWords } from '../js/phrases.js';
 
 const R = DEFAULT_ROUTINE; // breakfast 07:00, lunch 12:00, dinner 18:30, bed 21:30
 const TODAY = '2026-11-04';
@@ -177,6 +177,34 @@ test('timing phrases', () => {
   eq(timingPhrase('evening', 'BEFORE'), { en: 'Before dinner', zh: '晚餐前' });
   eq(timingPhrase('bedtime', 'AFTER'), { en: 'Bedtime', zh: '睡前' });
   eq(timingPhrase('noon', 'NONE'), { en: 'Noon', zh: '中午' });
+});
+
+test('dose verbs: never "eat" a drop or a puff', () => {
+  const act = (over) => doseAction({ doseQty: 1, ...over });
+  eq(act({ unit: 'tablet' }), { zh: '吃一粒', en: 'Take 1 tablet', complete: true });
+  eq(act({ unit: 'ml', doseQty: 10 }).zh, '喝十毫升');
+  eq(act({ unit: 'sachet' }).zh, '服一包');
+  eq(act({ unit: 'drop', route: 'eye', side: 'both' }), { zh: '每只眼滴一滴', en: '1 drop in each eye', complete: true });
+  eq(act({ unit: 'drop', route: 'eye', side: 'left' }).zh, '左眼滴一滴');
+  eq(act({ unit: 'drop', route: 'ear', side: 'right', doseQty: 2 }).en, '2 drops in the right ear');
+  eq(act({ unit: 'drop', route: 'nose' }).zh, '鼻子滴一滴');
+  eq(act({ unit: 'puff', route: 'mouth', doseQty: 2 }), { zh: '吸两喷', en: 'Inhale 2 puffs', complete: true });
+  eq(act({ unit: 'puff', route: 'nose' }).zh, '鼻子喷一喷');
+  // no route yet: neutral words, marked incomplete so the form insists
+  eq(act({ unit: 'drop' }).complete, false);
+  eq(act({ unit: 'puff' }).zh.startsWith('吃'), false);
+  for (const unit of ['drop', 'puff']) for (const route of ['eye', 'ear', 'nose', 'mouth', '']) {
+    eq(act({ unit, route, side: 'both' }).zh.includes('吃'), false, `${unit}/${route}`);
+  }
+});
+
+test('tick button words follow the verb', () => {
+  eq([takenWords('tablet').ask, takenWords('ml').ask, takenWords('drop').ask, takenWords('puff').done], ['我吃了', '我喝了', '我用了', '✓ 用了']);
+});
+
+test('limit wording only when the label gives one', () => {
+  eq(limitPhrase({ unit: 'tablet', maxPerDay: 8, minHours: 4 }), { zh: '一天最多八粒，每次隔四小时', en: 'Max 8 tablets a day · At least 4 hours apart' });
+  eq(limitPhrase({ unit: 'tablet', maxPerDay: null, minHours: null }), null);
 });
 
 // --- refill ---

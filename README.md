@@ -42,7 +42,7 @@ js/extract.js       answer checking before it reaches the form     — pure, tes
 js/storage.js       browser storage + example patient
 js/app.js           views: schedule/print, medicines, routine, elder view
 css/styles.css      large-print screen, phone and A4 print styles
-tests/              100 unit tests
+tests/              111 unit tests
 ```
 
 - **No build step, no server.** Plain HTML/CSS/JavaScript modules, hosted free on GitHub Pages.
@@ -51,6 +51,13 @@ tests/              100 unit tests
 - **Scheduling:** `BD + after food` → after breakfast and after dinner; `TDS + before food` → 30 min before each meal; `ON` → bedtime. Times come from the person's routine.
 - **Refills:** `run-out = dispensed date + ⌊quantity ÷ (dose × doses per day)⌋`; reminder 7 days before (adjustable). No reminder for "when needed" medicines or short courses that end first. "I counted…" lets the caregiver correct the count.
 - **Audio:** uses the browser's built-in Mandarin text-to-speech for now.
+
+## Safety details
+
+- **The right verb for the medicine.** Tablets 吃 (eat), liquids 喝 (drink), sachets 服, eye/ear/nose drops 滴 with **where and which side** ("左眼滴一滴", "1 drop in the left eye"), inhalers 吸, nasal sprays 鼻子喷. Drops and puffs can't be saved until "Where does it go?" is answered. The tick button follows suit (我吃了 / 我喝了 / 我用了).
+- **Nothing is pre-filled.** Unit, amount, how often, food, and where-it-goes start on "— choose 请选择 —", for scanned and typed-in medicines alike. A guess that happens to be wrong looks exactly like a right one. Only the dispense date defaults to today, because it only drives refill timing.
+- **Limits for "when needed" medicines,** only as printed on the label or entered by the caregiver. The app never suggests a number. They're shown and spoken as "一天最多八粒，每次隔四小时" (at most 8 a day, at least 4 hours apart). A "when needed" medicine with no limit is flagged for the caregiver to check with the pharmacist.
+- **No accidental ticks.** Ticking a dose more than 30 minutes early, or unticking one, asks first in a large bilingual dialog with "No" as the default. Early doses can still be recorded, since people do eat early.
 
 ## Elder view shows what to take now
 

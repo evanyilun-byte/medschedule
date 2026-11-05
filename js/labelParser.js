@@ -26,7 +26,7 @@ export function cleanText(raw) {
     .toUpperCase()
     .replace(/[‘’`]/g, "'")
     .replace(/(\d)[O](?=\d|\s*(?:MG|TAB|CAP))/g, '$10')
-    .replace(/\b[IL](?=\s*(?:TAB|CAP|TIME))/g, '1')
+    .replace(/\b[IL](?=\s*(?:TAB|CAP|TIME|DROP|PUFF))/g, '1')
     .replace(/[ \t]+/g, ' ')
     .split('\n')
     .map((l) => l.trim())
@@ -54,9 +54,37 @@ function findName(lines) {
 }
 
 function findDose(text) {
-  const m = text.match(new RegExp(`\\b(?:TAKE|USE|INHALE|APPLY|GIVE)\\s+${NUM}\\s*(${UNIT_RE})`));
+  const m = text.match(new RegExp(`\\b(?:TAKE|USE|INHALE|APPLY|GIVE|INSTIL+|PUT|SPRAY)\\s+${NUM}\\s*(${UNIT_RE})`));
   if (!m) return { dose: null, unit: null };
   return { dose: toNumber(m[1]), unit: unitFrom(m[2]) };
+}
+
+// Where drops and puffs go, and which side for eyes and ears.
+function findRoute(text, unit) {
+  const side = (organ) => {
+    if (new RegExp(`\\b(?:BOTH|EACH) ${organ}S?\\b|\\b${organ}S\\b`).test(text)) return 'both';
+    if (new RegExp(`\\bLEFT ${organ}\\b`).test(text)) return 'left';
+    if (new RegExp(`\\bRIGHT ${organ}\\b`).test(text)) return 'right';
+    return null;
+  };
+  if (/\bEYES?\b/.test(text)) return { route: 'eye', side: side('EYE') };
+  if (/\bEARS?\b/.test(text)) return { route: 'ear', side: side('EAR') };
+  if (/\bNOS(?:E|TRILS?)\b|\bNASAL\b/.test(text)) return { route: 'nose', side: null };
+  if (unit === 'puff' && /\bINHALE|\bINHALER\b|\bMOUTH\b/.test(text)) return { route: 'mouth', side: null };
+  return { route: null, side: null };
+}
+
+// Limits for "when needed" medicines, exactly as printed.
+function findMaxPerDay(text) {
+  const m = text.match(new RegExp(`\\b(?:MAX(?:IMUM)?\\.?|NOT MORE THAN|NO MORE THAN|NOT TO EXCEED|DO NOT TAKE MORE THAN|DO NOT EXCEED)\\s*:?\\s*(\\d{1,2})\\s*(?:${UNIT_RE})?\\s*(?:IN|PER|A|EACH)\\s*(?:24\\s*HOURS?|DAY|ONE DAY)\\b`));
+  return m ? Number(m[1]) : null;
+}
+
+function findMinHours(text) {
+  const m = text.match(/\bAT LEAST\s*(\d{1,2})\s*(?:HOURS?|HRS?)\s*APART\b/)
+    || text.match(/\bEVERY\s*(\d{1,2})\s*(?:-|TO)\s*\d{1,2}\s*(?:HOURS?|HRS?)\b/)
+    || text.match(/\bEVERY\s*(\d{1,2})\s*(?:HOURS?|HRS?)\b/);
+  return m ? Number(m[1]) : null;
 }
 
 function findFrequency(text) {
@@ -120,7 +148,7 @@ function findQuantity(lines) {
   }
   // No "QTY": take the largest "N TABS" outside the dosing lines, since a
   // shorthand dose line like "1 TAB OM" also has a number and a unit.
-  const DOSING = /\b(TAKE|USE|INHALE|APPLY|GIVE|OM|ON|OD|BD|BID|TDS|TID|QDS|QID|PRN|DAILY|TIMES?|NIGHT|MORNING)\b/;
+  const DOSING = /\b(TAKE|USE|INHALE|APPLY|GIVE|INSTIL+|PUT|SPRAY|OM|ON|OD|BD|BID|TDS|TID|QDS|QID|PRN|DAILY|TIMES?|NIGHT|MORNING|MAX(?:IMUM)?|EXCEED|EVERY)\b/;
   let best = null;
   for (const line of lines) {
     if (DOSING.test(line)) continue;
@@ -168,7 +196,18 @@ export function parseLabelText(rawText, ocrConfidence = 100) {
   if (dose == null) uncertain.push('dose_qty');
   if (!unit) uncertain.push('unit');
   if (!frequency || ambiguous) uncertain.push('frequency');
-  if (!food && frequency !== 'PRN') uncertain.push('food');
+  // Food wording matters for scheduled tablets; for "when needed" medicines,
+  // drops and puffs a silent label simply means "not stated".
+  const foodOptional = frequency === 'PRN' || unit === 'drop' || unit === 'puff';
+  if (!food && !foodOptional) uncertain.push('food');
+  const { route, side } = unit === 'drop' || unit === 'puff' ? findRoute(text, unit) : { route: null, side: null };
+  if ((unit === 'drop' || unit === 'puff') && !route) uncertain.push('route');
+  if ((route === 'eye' || route === 'ear') && !side) uncertain.push('side');
+  const maxPerDay = findMaxPerDay(text);
+  const minHours = findMinHours(text);
+  // Limits are always worth a second look; a "when needed" medicine without one is flagged too.
+  if (maxPerDay != null || frequency === 'PRN') uncertain.push('max_per_day');
+  if (minHours != null) uncertain.push('min_hours');
   // A blurry photo makes every reading suspect.
   if (ocrConfidence < 70) {
     for (const f of ['medicine_name', 'strength', 'dose_qty', 'frequency', 'food', 'quantity_supplied']) {
@@ -179,10 +218,10 @@ export function parseLabelText(rawText, ocrConfidence = 100) {
   // The dosing line, plus a continuation line such as "AFTER FOOD".
   const instructionLines = [];
   lines.forEach((l, i) => {
-    if (!/\b(TAKE|USE|INHALE|APPLY|GIVE)\b/.test(l)) return;
+    if (!/\b(TAKE|USE|INHALE|APPLY|GIVE|INSTIL+|PUT|SPRAY)\b/.test(l)) return;
     instructionLines.push(l);
     const next = lines[i + 1];
-    if (next && /^(AFTER|BEFORE|WITH|ON|AT|IN|EVERY|FOR|WHEN|IF|AS)\b/.test(next)) instructionLines.push(next);
+    if (next && /^(AFTER|BEFORE|WITH|ON|AT|IN|EVERY|FOR|WHEN|IF|AS|TO|MAX|NOT|DO NOT)\b/.test(next)) instructionLines.push(next);
   });
 
   return {
@@ -192,7 +231,11 @@ export function parseLabelText(rawText, ocrConfidence = 100) {
     dose_qty: dose,
     unit,
     frequency,
-    food: food ?? 'NONE',
+    food: food ?? (foodOptional ? 'NONE' : null),
+    route,
+    side,
+    max_per_day: maxPerDay,
+    min_hours: minHours,
     prn_reason: frequency === 'PRN' ? findPrnReason(text) : null,
     warnings: findWarnings(text),
     quantity_supplied: findQuantity(lines),

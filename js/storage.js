@@ -112,11 +112,17 @@ export function blankMedicine(today) {
     strength: '',
     nicknameZh: '',
     photo: '',
-    doseQty: 1,
-    unit: 'tablet',
-    frequency: 'BD',
-    food: 'AFTER',
-    prnReason: 'PRN_GENERIC',
+    // How-to-take fields start blank so the caregiver must choose each one;
+    // a pre-filled guess that happens to be wrong looks just like a right one.
+    doseQty: null,
+    unit: '',
+    frequency: '',
+    food: '',
+    prnReason: '',
+    route: '',
+    side: '',
+    maxPerDay: null,
+    minHours: null,
     warnings: [],
     startDate: today,
     endDate: '',
@@ -132,7 +138,7 @@ export function blankMedicine(today) {
 // Made-up example patient for demos; not real patient data. Numbers continue
 // after any medicines other household members already have.
 export function sampleMedicines(today, others = []) {
-  const base = blankMedicine(today);
+  const base = { ...blankMedicine(today), doseQty: 1, unit: 'tablet', food: 'NONE' };
   const m = (over) => ({ ...base, id: newId(), ...over });
   return assignNumbers([
     m({ nameEn: 'Metformin', strength: '500mg', nicknameZh: '降血糖药', frequency: 'BD', food: 'AFTER', qtySupplied: 60, dispensedOn: addDays(today, -24) }),
@@ -140,6 +146,7 @@ export function sampleMedicines(today, others = []) {
     m({ nameEn: 'Omeprazole', strength: '20mg', nicknameZh: '胃药', unit: 'capsule', frequency: 'OD', food: 'BEFORE', qtySupplied: 30, dispensedOn: addDays(today, -28), warnings: ['WARN_SWALLOW'] }),
     m({ nameEn: 'Atorvastatin', strength: '20mg', nicknameZh: '降胆固醇药', frequency: 'ON', food: 'NONE', qtySupplied: 90, dispensedOn: addDays(today, -30) }),
     m({ nameEn: 'Amoxicillin', strength: '500mg', nicknameZh: '消炎药', unit: 'capsule', frequency: 'TDS', food: 'AFTER', qtySupplied: 15, endDate: addDays(today, 4), warnings: ['WARN_COMPLETE'] }),
-    m({ nameEn: 'Paracetamol', strength: '500mg', nicknameZh: '止痛药', doseQty: 2, frequency: 'PRN', food: 'AFTER', prnReason: 'PRN_PAIN', qtySupplied: 20 }),
+    m({ nameEn: 'Paracetamol', strength: '500mg', nicknameZh: '止痛药', doseQty: 2, frequency: 'PRN', food: 'AFTER', prnReason: 'PRN_PAIN', maxPerDay: 8, minHours: 4, qtySupplied: 20 }),
+    m({ nameEn: 'Timolol', strength: '0.5%', nicknameZh: '眼药水', unit: 'drop', route: 'eye', side: 'both', frequency: 'BD', qtySupplied: null }),
   ], others);
 }

@@ -1,7 +1,7 @@
 // Label reading: read a photo (free on-device OCR by default, or the optional
 // AI backend), then turn the answer into medicine form values. Anything
 // unknown, missing or odd is flagged for the caregiver instead of trusted.
-import { FREQUENCIES, FOOD, UNITS, PRN_REASONS, WARNINGS } from './phrases.js';
+import { FREQUENCIES, FOOD, UNITS, PRN_REASONS, WARNINGS, ROUTES, SIDES, needsRoute } from './phrases.js';
 import { addDays } from './refill.js';
 import { READ_LABEL_URL } from './config.js';
 import { parseLabelText } from './labelParser.js';
@@ -20,6 +20,10 @@ const FIELD_MAP = {
   quantity_supplied: 'qtySupplied',
   dispensed_on: 'dispensedOn',
   duration_days: 'endDate',
+  route: 'route',
+  side: 'side',
+  max_per_day: 'maxPerDay',
+  min_hours: 'minHours',
 };
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -29,6 +33,9 @@ function isValidDate(s) {
 }
 
 // Returns { values, uncertain, instructionText, notes } or { unreadable: true }.
+// Anything unknown or out of range is left BLANK (and flagged), never filled
+// with a plausible default: a pre-filled "twice a day" that is wrong looks
+// exactly like one that is right, and tired reviewers trust what is there.
 export function normalizeLabel(label, today) {
   if (!label || label.readable === false) return { unreadable: true };
 
@@ -37,6 +44,13 @@ export function normalizeLabel(label, today) {
     (label.uncertain_fields || []).map((f) => FIELD_MAP[f]).filter(Boolean),
   );
   const flag = (field) => uncertain.add(field);
+  const pick = (field, value, allowed) => {
+    if (value in allowed) values[field] = value;
+    else {
+      values[field] = '';
+      flag(field);
+    }
+  };
 
   const text = (v) => (typeof v === 'string' ? v.trim() : '');
   values.nameEn = text(label.medicine_name);
@@ -44,36 +58,38 @@ export function normalizeLabel(label, today) {
   values.strength = text(label.strength);
 
   const dose = Number(label.dose_qty);
-  if (dose > 0 && dose <= 20 && Number.isInteger(dose * 2)) values.doseQty = dose;
+  if (label.dose_qty != null && dose > 0 && dose <= 20 && Number.isInteger(dose * 2)) values.doseQty = dose;
   else {
-    values.doseQty = 1;
+    values.doseQty = null;
     flag('doseQty');
   }
 
-  if (label.unit in UNITS) values.unit = label.unit;
-  else {
-    values.unit = 'tablet';
-    flag('unit');
-  }
+  pick('unit', label.unit, UNITS);
+  pick('frequency', label.frequency, FREQUENCIES);
+  pick('food', label.food, FOOD);
 
-  if (label.frequency in FREQUENCIES) values.frequency = label.frequency;
-  else {
-    values.frequency = 'BD';
-    flag('frequency');
-  }
-
-  if (label.food in FOOD) values.food = label.food;
-  else {
-    values.food = 'NONE';
-    flag('food');
+  if (needsRoute(values.unit)) {
+    pick('route', label.route, ROUTES);
+    if (ROUTES[values.route]?.sided) pick('side', label.side, SIDES);
+    else values.side = '';
+  } else {
+    values.route = '';
+    values.side = '';
   }
 
   if (values.frequency === 'PRN') {
-    if (label.prn_reason in PRN_REASONS) values.prnReason = label.prn_reason;
-    else {
-      values.prnReason = 'PRN_GENERIC';
-      flag('prnReason');
-    }
+    pick('prnReason', label.prn_reason, PRN_REASONS);
+    const limit = (v, max) => {
+      const n = Number(v);
+      return v != null && Number.isInteger(n) && n > 0 && n <= max ? n : null;
+    };
+    values.maxPerDay = limit(label.max_per_day, 50);
+    values.minHours = limit(label.min_hours, 48);
+    flag('maxPerDay'); // a limit, or the lack of one, always deserves a look
+    if (values.minHours != null) flag('minHours');
+  } else {
+    values.maxPerDay = null;
+    values.minHours = null;
   }
 
   const warnings = Array.isArray(label.warnings) ? label.warnings : [];
@@ -84,7 +100,8 @@ export function normalizeLabel(label, today) {
   if (label.quantity_supplied != null && qty > 0 && qty <= 1000) values.qtySupplied = qty;
   else values.qtySupplied = null;
 
-  // A dispense date in the future or far past is almost certainly misread.
+  // The dispense date only drives refill timing, so a missing one defaults to
+  // today. A future or very old date is almost certainly misread: flag it.
   if (isValidDate(label.dispensed_on) && label.dispensed_on <= today && label.dispensed_on >= addDays(today, -365)) {
     values.dispensedOn = label.dispensed_on;
   } else {

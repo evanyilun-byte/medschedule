@@ -44,6 +44,79 @@ export const UNITS = {
   drop: { en: ['drop', 'drops'], zh: '滴' },
 };
 
+// Where drops and puffs go. Eye and ear also take a side.
+export const ROUTES = {
+  eye: { en: 'Eye', zh: '眼睛', sided: true, for: 'drop' },
+  ear: { en: 'Ear', zh: '耳朵', sided: true, for: 'drop' },
+  nose: { en: 'Nose', zh: '鼻子', sided: false, for: 'both' },
+  mouth: { en: 'Mouth (inhaler)', zh: '嘴（吸入）', sided: false, for: 'puff' },
+};
+
+export const SIDES = {
+  both: { en: 'Both', zh: '两边' },
+  left: { en: 'Left', zh: '左边' },
+  right: { en: 'Right', zh: '右边' },
+};
+
+const ORGAN = { eye: { zh: '眼', en: 'eye' }, ear: { zh: '耳', en: 'ear' } };
+
+export function needsRoute(unit) {
+  return unit === 'drop' || unit === 'puff';
+}
+
+// The action said and shown for one dose. The verb depends on the unit and,
+// for drops and puffs, on where the medicine goes — "吃一滴" (eat one drop)
+// for an eye drop would be wrong and unsafe. `complete` is false when a
+// drop or puff has no route yet, so the form can insist on one.
+export function doseAction(med) {
+  const qZh = zhQuantity(med.doseQty, med.unit);
+  const qEn = enQuantity(med.doseQty, med.unit);
+  switch (med.unit) {
+    case 'ml':
+      return { zh: `喝${qZh}`, en: `Drink ${qEn}`, complete: true };
+    case 'sachet':
+      return { zh: `服${qZh}`, en: `Take ${qEn}`, complete: true };
+    case 'drop': {
+      const o = ORGAN[med.route];
+      if (o && med.side === 'both') return { zh: `每只${o.zh}滴${qZh}`, en: `${qEn} in each ${o.en}`, complete: true };
+      if (o && (med.side === 'left' || med.side === 'right')) {
+        return { zh: `${med.side === 'left' ? '左' : '右'}${o.zh}滴${qZh}`, en: `${qEn} in the ${med.side} ${o.en}`, complete: true };
+      }
+      if (med.route === 'nose') return { zh: `鼻子滴${qZh}`, en: `${qEn} in the nose`, complete: true };
+      return { zh: `滴${qZh}`, en: qEn, complete: false };
+    }
+    case 'puff':
+      if (med.route === 'mouth') return { zh: `吸${qZh}`, en: `Inhale ${qEn}`, complete: true };
+      if (med.route === 'nose') return { zh: `鼻子喷${qZh}`, en: `${qEn} in the nose`, complete: true };
+      return { zh: `用${qZh}`, en: `Use ${qEn}`, complete: false };
+    default: // tablet, capsule
+      return { zh: `吃${qZh}`, en: `Take ${qEn}`, complete: true };
+  }
+}
+
+// Words on the elder's tick button, matching the verb above.
+export function takenWords(unit) {
+  if (unit === 'ml') return { ask: '我喝了', done: '✓ 喝了' };
+  if (unit === 'drop' || unit === 'puff') return { ask: '我用了', done: '✓ 用了' };
+  return { ask: '我吃了', done: '✓ 吃了' };
+}
+
+// Limits for "only when needed" medicines, only ever as printed on the label
+// or entered by the caregiver — the app never suggests a number.
+export function limitPhrase(med) {
+  const zh = [];
+  const en = [];
+  if (med.maxPerDay) {
+    zh.push(`一天最多${zhQuantity(med.maxPerDay, med.unit)}`);
+    en.push(`Max ${enQuantity(med.maxPerDay, med.unit)} a day`);
+  }
+  if (med.minHours) {
+    zh.push(`每次隔${zhNumber(med.minHours)}小时`);
+    en.push(`At least ${med.minHours} hours apart`);
+  }
+  return zh.length ? { zh: zh.join('，'), en: en.join(' · ') } : null;
+}
+
 export const PRN_REASONS = {
   PRN_GENERIC: { en: 'Only when needed', zh: '需要的时候才吃' },
   PRN_PAIN: { en: 'Only when in pain', zh: '痛的时候才吃' },
