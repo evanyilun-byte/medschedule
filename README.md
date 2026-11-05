@@ -42,7 +42,7 @@ js/extract.js       answer checking before it reaches the form     — pure, tes
 js/storage.js       browser storage + example patient
 js/app.js           views: schedule/print, medicines, routine, elder view
 css/styles.css      large-print screen, phone and A4 print styles
-tests/              88 unit tests
+tests/              94 unit tests
 ```
 
 - **No build step, no server.** Plain HTML/CSS/JavaScript modules, hosted free on GitHub Pages.
@@ -51,6 +51,15 @@ tests/              88 unit tests
 - **Scheduling:** `BD + after food` → after breakfast and after dinner; `TDS + before food` → 30 min before each meal; `ON` → bedtime. Times come from the person's routine.
 - **Refills:** `run-out = dispensed date + ⌊quantity ÷ (dose × doses per day)⌋`; reminder 7 days before (adjustable). No reminder for "when needed" medicines or short courses that end first. "I counted…" lets the caregiver correct the count.
 - **Audio:** uses the browser's built-in Mandarin text-to-speech for now.
+
+## Several people in one household
+
+One caregiver often looks after both parents. Each person gets a **profile** (no sign-in, still stored only on the device) with their own name, routine and medicines. Switch between them with the **Caring for 照顾** buttons at the top of the caregiver screens.
+
+- **Shared phone:** if there's more than one profile, the elder view first asks **你是谁？ Who are you?** with a big button per person. Their name then stays at the top of the screen, with a **换人 Switch** button.
+- **No clashing packet numbers:** numbers run across the whole household (Ah Ma ①–⑥, Ah Gong ⑦–⑫), and a household counter only goes up. A number stays retired after its medicine is removed, because its packet may still be in the cupboard.
+- **Remove all medicines** (bottom of the Medicines page) clears one person's list but keeps their name and routine. **Remove person** and **Clear all data (everyone)** are on the Routine page.
+- Data saved by earlier versions is migrated automatically into the first profile.
 
 ## Label reading (photo → details), free and on-device
 
@@ -86,6 +95,7 @@ See [PLAN.md](PLAN.md) for the full plan.
 - [x] Elder view (Now/slot screens, listen, tick off) — single device
 - [x] M2 — Free on-device label scanning (OCR + rule parser) → caregiver review
 - [x] Packet numbers (write on packet, matched in elder view, schedule and audio)
+- [x] Profiles for several people, shared-phone picker, household-wide numbering
 - [ ] Share link so the elder's own phone gets the schedule
 - [ ] Recorded/cloud TTS audio clips; dialects (Hokkien, Cantonese)
 - [ ] Evaluation: scanning accuracy on ~30 mock labels, usability sessions

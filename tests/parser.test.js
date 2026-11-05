@@ -2,7 +2,7 @@ import { test, eq } from './harness.js';
 import { parseLabelText, cleanText } from '../js/labelParser.js';
 import { normalizeLabel } from '../js/extract.js';
 import { zhNumber } from '../js/phrases.js';
-import { nextNumber, assignNumbers } from '../js/storage.js';
+import { nextNumber, assignNumbers, migrate, sampleMedicines, activeProfile, allMedicines, takeNumber, emptyState } from '../js/storage.js';
 
 // Mock labels in the styles used by Singapore clinics (made-up patients).
 const POLYCLINIC = `
@@ -161,4 +161,63 @@ test('numbers are assigned once and never reused', () => {
   const out = assignNumbers([{ id: 'a' }, { id: 'b', number: 3 }, { id: 'c' }]);
   eq(out.map((m) => m.number), [4, 3, 5]);
   eq(assignNumbers(out).map((m) => m.number), [4, 3, 5]); // stable on reload
+});
+
+// --- profiles ---
+test('migrate: old single-person data becomes one profile, nothing lost', () => {
+  const v1 = {
+    person: { name: 'Ah Ma', routine: { breakfast: '08:00' } },
+    medicines: [{ id: 'a', nameEn: 'Metformin', number: 1 }, { id: 'b', nameEn: 'Aspirin' }],
+    taken: { '2026-11-05': { 'a:morning': true } },
+    settings: { elderBilingual: true },
+  };
+  const s = migrate(v1);
+  eq(s.version, 2);
+  eq(s.profiles.length, 1);
+  const p = activeProfile(s);
+  eq([p.name, p.routine.breakfast, p.routine.bed], ['Ah Ma', '08:00', '21:30']);
+  eq(p.medicines.map((m) => [m.id, m.number]), [['a', 1], ['b', 2]]);
+  eq(p.taken, v1.taken);
+  eq(s.settings, { elderBilingual: true });
+});
+
+test('migrate: numbers are unique across the household', () => {
+  const s = migrate({
+    profiles: [
+      { id: 'ma', name: 'Ah Ma', medicines: [{ id: 'a', number: 1 }, { id: 'b' }] },
+      { id: 'gong', name: 'Ah Gong', medicines: [{ id: 'c' }, { id: 'd', number: 7 }] },
+    ],
+    activeId: 'gong',
+  });
+  const nums = allMedicines(s).map((m) => m.number);
+  eq(nums, [1, 2, 8, 7]);
+  eq(new Set(nums).size, nums.length);
+  eq(activeProfile(s).name, 'Ah Gong');
+});
+
+test('migrate: unknown active profile falls back to the first; junk gives a fresh start', () => {
+  eq(migrate({ profiles: [{ id: 'x', medicines: [] }], activeId: 'gone' }).activeId, 'x');
+  eq(migrate(null).profiles.length, 1);
+  eq(migrate('nonsense').profiles[0].medicines, []);
+});
+
+test('example patient numbers continue after other household members', () => {
+  const meds = sampleMedicines('2026-11-05', [{ number: 1 }, { number: 2 }, { number: 3 }]);
+  eq(meds.map((m) => m.number), [4, 5, 6, 7, 8, 9]);
+});
+
+test('numbers stay retired after medicines are removed', () => {
+  const s = emptyState();
+  const p = activeProfile(s);
+  p.medicines = [{ id: 'a', number: takeNumber(s) }, { id: 'b', number: takeNumber(s) }];
+  eq(p.medicines.map((m) => m.number), [1, 2]);
+  p.medicines = []; // "Remove all medicines"
+  eq(takeNumber(s), 3);
+});
+
+test('migrate keeps the counter so old numbers are not handed out again', () => {
+  const s = migrate({ profiles: [{ id: 'x', medicines: [{ id: 'a', number: 2 }] }], lastNumber: 9 });
+  eq(s.lastNumber, 9);
+  eq(takeNumber(s), 10);
+  eq(migrate({ person: { name: '' }, medicines: [{ id: 'a' }, { id: 'b' }] }).lastNumber, 2);
 });

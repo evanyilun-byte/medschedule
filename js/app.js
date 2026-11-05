@@ -4,10 +4,14 @@ import {
 } from './phrases.js';
 import { buildSchedule, currentSlot, isActive, groupByTime } from './scheduler.js';
 import { refillInfo, refillIcs } from './refill.js';
-import { load, save, blankMedicine, sampleState, emptyState, nextNumber } from './storage.js';
+import {
+  load, save, blankMedicine, sampleMedicines, emptyState, takeNumber, syncLastNumber, newProfile, activeProfile, allMedicines,
+} from './storage.js';
 import { normalizeLabel, usingAiReader, readLabel, readLabelOnDevice } from './extract.js';
 
 let state = load();
+// The person being looked at, on the caregiver screens and in the elder view.
+const P = () => activeProfile(state);
 const app = document.getElementById('app');
 
 // ---------- helpers ----------
@@ -122,14 +126,24 @@ function nav(active) {
       ${link('#/routine', 'Routine', '作息')}
       ${link('#/elder', 'Elder view', '老人模式')}
     </nav>
-  </header>`;
+  </header>
+  <div class="profile-bar no-print" role="group" aria-label="Person being cared for">
+    <span class="muted">Caring for 照顾:</span>
+    ${state.profiles.map((p) => `<button class="profile-chip ${p.id === P().id ? 'active' : ''}" data-profile="${p.id}"
+      aria-pressed="${p.id === P().id}">${esc(profileName(p))}</button>`).join('')}
+    <button class="profile-chip add" id="add-profile">+ Add person 加人</button>
+  </div>`;
+}
+
+function profileName(p) {
+  return p.name || `Person ${state.profiles.indexOf(p) + 1}`;
 }
 
 // ---------- schedule (caregiver + printout) ----------
 
 function refillAlerts() {
   const today = todayStr();
-  const due = state.medicines
+  const due = P().medicines
     .map((med) => ({ med, info: refillInfo(med, today) }))
     .filter(({ info }) => info && info.status !== 'ok')
     .sort((a, b) => a.info.runOut.localeCompare(b.info.runOut));
@@ -148,8 +162,8 @@ function refillAlerts() {
 
 function scheduleSheet() {
   const today = todayStr();
-  const { slots, asNeeded } = buildSchedule(state.medicines, state.person.routine, today);
-  const name = state.person.name;
+  const { slots, asNeeded } = buildSchedule(P().medicines, P().routine, today);
+  const name = P().name;
   const d = fmtDate(today);
 
   // One row = number + photo, Chinese name + amount, a short English line.
@@ -198,7 +212,7 @@ function scheduleSheet() {
 }
 
 function viewSchedule() {
-  const hasMeds = state.medicines.some((m) => isActive(m, todayStr()));
+  const hasMeds = P().medicines.some((m) => isActive(m, todayStr()));
   return `${nav('#/schedule')}
   <main>
     ${refillAlerts()}
@@ -229,7 +243,7 @@ function medSummary(med) {
 
 function viewMeds() {
   const today = todayStr();
-  const meds = [...state.medicines].sort((a, b) => (a.status === 'stopped') - (b.status === 'stopped'));
+  const meds = [...P().medicines].sort((a, b) => (a.status === 'stopped') - (b.status === 'stopped'));
   return `${nav('#/meds')}
   <main>
     <div class="toolbar">
@@ -261,6 +275,9 @@ function viewMeds() {
         </li>`;
       }).join('')}
     </ul>
+    ${meds.length ? `<div class="toolbar danger-zone">
+      <button class="danger" id="clear-meds">Remove all of ${esc(profileName(P()))}'s medicines 删除所有药物</button>
+    </div>` : ''}
   </main>`;
 }
 
@@ -271,7 +288,7 @@ function options(map, selected, label = (v) => `${v.en} · ${v.zh}`) {
 }
 
 function viewMedForm(id) {
-  const existing = state.medicines.find((m) => m.id === id);
+  const existing = P().medicines.find((m) => m.id === id);
   const med = existing ?? blankMedicine(todayStr());
   return `${nav('#/meds')}
   <main>
@@ -428,10 +445,10 @@ function resizeImage(file, max = 320, quality = 0.8) {
 async function submitMedForm(form) {
   const fd = new FormData(form);
   const id = form.dataset.id;
-  const existing = state.medicines.find((m) => m.id === id);
+  const existing = P().medicines.find((m) => m.id === id);
   const num = (v) => (v === '' || v == null ? null : Number(v));
   const med = {
-    ...(existing ?? { ...blankMedicine(todayStr()), number: nextNumber(state.medicines) }),
+    ...(existing ?? { ...blankMedicine(todayStr()), number: takeNumber(state) }),
     id,
     nameEn: fd.get('nameEn').trim(),
     strength: fd.get('strength').trim(),
@@ -458,9 +475,9 @@ async function submitMedForm(form) {
   else if (!med.photo && form.dataset.photo) med.photo = form.dataset.photo; // scanned label
   if (fd.get('removePhoto')) med.photo = '';
 
-  state.medicines = existing
-    ? state.medicines.map((m) => (m.id === id ? med : m))
-    : [...state.medicines, med];
+  P().medicines = existing
+    ? P().medicines.map((m) => (m.id === id ? med : m))
+    : [...P().medicines, med];
   persist();
   location.hash = '#/meds';
 }
@@ -468,7 +485,7 @@ async function submitMedForm(form) {
 // ---------- routine ----------
 
 function viewRoutine() {
-  const r = state.person.routine;
+  const r = P().routine;
   const field = (key, en, zh) =>
     `<label>${zh} ${en} <input type="time" name="${key}" required value="${esc(r[key])}"></label>`;
   return `${nav('#/routine')}
@@ -476,7 +493,7 @@ function viewRoutine() {
     <form id="routine-form" class="card form">
       <h2>Daily routine <span class="zh">作息时间</span></h2>
       <p class="muted">Vague label wording like "twice daily, after food" is turned into clock times using these.</p>
-      <label>Name on schedule (optional) <input name="name" value="${esc(state.person.name)}" placeholder="e.g. Ah Ma / 婆婆"></label>
+      <label>Name 名字 (shown on the schedule and elder view) <input name="name" value="${esc(P().name)}" placeholder="e.g. Ah Ma / 婆婆"></label>
       <div class="row">
         ${field('wake', 'Wake up', '起床')}
         ${field('breakfast', 'Breakfast', '早餐')}
@@ -499,24 +516,45 @@ function viewRoutine() {
       </div>
       <hr>
       <p class="muted">Data is stored only in this browser.</p>
-      <button type="button" class="danger" id="reset">Clear all data</button>
+      <div class="toolbar">
+        ${state.profiles.length > 1
+          ? `<button type="button" class="danger" id="delete-profile">Remove ${esc(profileName(P()))} and their medicines</button>`
+          : ''}
+        <button type="button" class="danger" id="reset">Clear all data (everyone)</button>
+      </div>
     </form>
   </main>`;
 }
 
 // ---------- elder view ----------
 
+// Couples often share one phone: ask who is using it before showing
+// anyone's medicines, so nobody takes their spouse's.
+function viewElderPicker() {
+  return `<div class="elder">
+    <header class="elder-top">
+      <div class="elder-date">你是谁？ <small>Who are you?</small></div>
+      <a class="elder-exit" href="#/schedule">Exit 退出</a>
+    </header>
+    <div class="who-list">
+      ${state.profiles.map((p) => `<button class="who" data-elder-pick="${p.id}">👤 ${esc(profileName(p))}</button>`).join('')}
+    </div>
+  </div>`;
+}
+
 function viewElder(slotParam) {
+  if (!slotParam && state.profiles.length > 1) return viewElderPicker();
+  if (slotParam === 'now') slotParam = undefined;
   const today = todayStr();
-  const { slots, asNeeded } = buildSchedule(state.medicines, state.person.routine, today);
+  const { slots, asNeeded } = buildSchedule(P().medicines, P().routine, today);
   const present = slots.map((s) => s.slot);
-  let slot = SLOT_ORDER.includes(slotParam) ? slotParam : currentSlot(state.person.routine, nowHHMM());
+  let slot = SLOT_ORDER.includes(slotParam) ? slotParam : currentSlot(P().routine, nowHHMM());
   if (!slotParam && !present.includes(slot)) slot = present.find((s) => SLOT_ORDER.indexOf(s) >= SLOT_ORDER.indexOf(slot)) ?? present[0];
   const current = slots.find((s) => s.slot === slot);
-  const taken = state.taken[today] || {};
+  const taken = P().taken[today] || {};
   const d = new Date();
 
-  const refillDue = state.medicines.filter((m) => {
+  const refillDue = P().medicines.filter((m) => {
     const info = refillInfo(m, today);
     return info && info.status !== 'ok';
   });
@@ -559,6 +597,10 @@ function viewElder(slotParam) {
       <div class="elder-date">${d.getMonth() + 1}月${d.getDate()}日 ${ZH_WEEKDAYS[d.getDay()]}</div>
       <a class="elder-exit" href="#/schedule">Exit 退出</a>
     </header>
+    ${P().name || state.profiles.length > 1 ? `<div class="elder-who">
+      <span>👤 ${esc(profileName(P()))}</span>
+      ${state.profiles.length > 1 ? '<a class="button" href="#/elder">换人 Switch</a>' : ''}
+    </div>` : ''}
     ${refillDue.length ? `<button class="elder-refill" data-speak-text="${esc(MISC.REFILL_SOON.zh)}">
       🔔 ${MISC.REFILL_SOON.zh} 🔊
       <small>${refillDue.map((m) => `${m.number}${MISC.NUMBER_SUFFIX.zh} ${esc(medName(m).zh)}`).join('、')} · ${MISC.REFILL_SOON.en}</small>
@@ -632,27 +674,63 @@ function downloadIcs(med) {
 app.addEventListener('click', (e) => {
   const el = e.target.closest('button');
   if (!el) return;
-  const findMed = (id) => state.medicines.find((m) => m.id === id);
+  const findMed = (id) => P().medicines.find((m) => m.id === id);
   const d = el.dataset;
 
   if (el.id === 'print') window.print();
   else if (el.id === 'sample') {
-    state = { ...sampleState(todayStr()), settings: state.settings };
+    P().medicines = sampleMedicines(todayStr(), [{ number: state.lastNumber || 0 }, ...allMedicines(state)]);
+    syncLastNumber(state);
+    if (!P().name) P().name = 'Ah Ma';
     persist();
     render();
   } else if (el.id === 'reset') {
-    if (confirm('Delete all medicines and settings stored in this browser?')) {
+    if (confirm('Delete EVERYONE\'s medicines, routines and settings stored in this browser?\n删除所有人的资料？\n\nNumbers written on packets will no longer match. This cannot be undone.')) {
       state = emptyState();
       persist();
       location.hash = '#/schedule';
       render();
     }
+  } else if (d.profile) {
+    state.activeId = d.profile;
+    persist();
+    render();
+  } else if (el.id === 'add-profile') {
+    const name = prompt('Name of the person you care for (e.g. Ah Gong / 公公):');
+    if (name === null) return;
+    const p = newProfile(name.trim());
+    state.profiles.push(p);
+    state.activeId = p.id;
+    persist();
+    location.hash = '#/routine'; // set their own meal and bed times first
+    render();
+  } else if (el.id === 'delete-profile') {
+    const p = P();
+    if (confirm(`Remove ${profileName(p)} and all their medicines?\n删除${profileName(p)}的资料？\n\nThis cannot be undone.`)) {
+      state.profiles = state.profiles.filter((x) => x.id !== p.id);
+      state.activeId = state.profiles[0].id;
+      persist();
+      location.hash = '#/schedule';
+      render();
+    }
+  } else if (el.id === 'clear-meds') {
+    const p = P();
+    if (confirm(`Remove all of ${profileName(p)}'s medicines?\n删除${profileName(p)}的所有药物？\n\nTheir name and routine are kept. New medicines get new numbers, so cross out old numbers on packets. This cannot be undone.`)) {
+      p.medicines = [];
+      p.taken = {};
+      persist();
+      render();
+    }
+  } else if (d.elderPick) {
+    state.activeId = d.elderPick;
+    persist();
+    location.hash = '#/elder/now';
   } else if (d.ics) downloadIcs(findMed(d.ics));
   else if (d.speak) speak(speakText(findMed(d.speak), d.slot));
   else if (d.speakText) speak(d.speakText);
   else if (d.take) {
     const today = todayStr();
-    const day = (state.taken = { [today]: state.taken[today] || {} })[today]; // keep only today
+    const day = (P().taken = { [today]: P().taken[today] || {} })[today]; // keep only today
     day[d.take] = !day[d.take];
     persist();
     render();
@@ -673,7 +751,7 @@ app.addEventListener('click', (e) => {
     render();
   } else if (d.delete) {
     if (confirm('Delete this medicine permanently?')) {
-      state.medicines = state.medicines.filter((m) => m.id !== d.delete);
+      P().medicines = P().medicines.filter((m) => m.id !== d.delete);
       persist();
       render();
     }
@@ -685,8 +763,8 @@ app.addEventListener('submit', (e) => {
   if (e.target.id === 'med-form') submitMedForm(e.target);
   else if (e.target.id === 'routine-form') {
     const fd = new FormData(e.target);
-    state.person.name = fd.get('name').trim();
-    for (const k of ['wake', 'breakfast', 'lunch', 'dinner', 'bed']) state.person.routine[k] = fd.get(k);
+    P().name = fd.get('name').trim();
+    for (const k of ['wake', 'breakfast', 'lunch', 'dinner', 'bed']) P().routine[k] = fd.get(k);
     state.settings = { ...state.settings, elderBilingual: fd.has('elderBilingual') };
     if (fd.has('accessCode')) state.settings.accessCode = fd.get('accessCode').trim();
     persist();
