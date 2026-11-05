@@ -58,6 +58,19 @@ export function buildSchedule(medicines, routine, today) {
   };
 }
 
+// Doses at the same time with the same meal wording share one heading, so
+// "早餐后 7:30" is said once instead of on every row. Keeps time order.
+export function groupByTime(items) {
+  const groups = new Map();
+  for (const item of items) {
+    const food = !SLOTS[item.slot].meal || item.med.food === 'NONE' ? 'NONE' : item.med.food;
+    const key = `${item.time}|${food}`;
+    if (!groups.has(key)) groups.set(key, { time: item.time, slot: item.slot, food, items: [] });
+    groups.get(key).items.push(item);
+  }
+  return [...groups.values()];
+}
+
 // Which slot the elder should look at right now: the next one not yet
 // past by more than an hour, wrapping to morning after bedtime.
 export function currentSlot(routine, nowHHMM) {

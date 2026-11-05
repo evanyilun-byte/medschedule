@@ -1,5 +1,5 @@
 import { test, eq } from './harness.js';
-import { buildSchedule, doseTime, dosesPerDay, currentSlot, DEFAULT_ROUTINE, toHHMM } from '../js/scheduler.js';
+import { buildSchedule, doseTime, dosesPerDay, currentSlot, DEFAULT_ROUTINE, toHHMM, groupByTime } from '../js/scheduler.js';
 import { refillInfo, addDays, daysBetween } from '../js/refill.js';
 import { zhQuantity, enQuantity, timingPhrase, FREQUENCIES, FOOD } from '../js/phrases.js';
 
@@ -64,6 +64,32 @@ test('items within a slot are sorted by time', () => {
     TODAY,
   );
   eq(sched.slots[0].items.map((i) => i.med.id), ['b', 'a']);
+});
+
+test('groupByTime: same time and meal wording share a heading', () => {
+  const sched = buildSchedule(
+    [
+      med({ id: 'a', food: 'AFTER' }),
+      med({ id: 'b', food: 'AFTER' }),
+      med({ id: 'c', food: 'BEFORE' }),
+      med({ id: 'd', food: 'NONE' }),
+      med({ id: 'e', food: 'WITH' }), // same 07:00 as NONE, different wording
+    ],
+    R,
+    TODAY,
+  );
+  const groups = groupByTime(sched.slots[0].items);
+  eq(groups.map((g) => [g.time, g.food, g.items.map((i) => i.med.id)]), [
+    ['06:30', 'BEFORE', ['c']],
+    ['07:00', 'NONE', ['d']],
+    ['07:00', 'WITH', ['e']],
+    ['07:30', 'AFTER', ['a', 'b']],
+  ]);
+});
+
+test('groupByTime: bedtime doses group together whatever the food code', () => {
+  const sched = buildSchedule([med({ id: 'x', frequency: 'ON', food: 'AFTER' }), med({ id: 'y', frequency: 'ON', food: 'NONE' })], R, TODAY);
+  eq(groupByTime(sched.slots[0].items).map((g) => g.items.length), [2]);
 });
 
 test('PRN medicines go to the as-needed list only', () => {

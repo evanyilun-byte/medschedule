@@ -52,12 +52,14 @@ export const PRN_REASONS = {
   PRN_GIDDY: { en: 'Only when giddy', zh: '头晕的时候才吃' },
 };
 
+// short: compact chip text for the schedule and elder view; the full
+// wording is spoken aloud and shown in the medicine list.
 export const WARNINGS = {
-  WARN_DROWSY: { en: 'May cause drowsiness', zh: '会让人想睡觉', icon: '😴' },
-  WARN_COMPLETE: { en: 'Finish the whole course', zh: '要吃完全部', icon: '✅' },
-  WARN_NO_ALCOHOL: { en: 'Do not drink alcohol', zh: '不要喝酒', icon: '🚫' },
-  WARN_WATER: { en: 'Drink plenty of water', zh: '要多喝水', icon: '💧' },
-  WARN_SWALLOW: { en: 'Swallow whole, do not chew', zh: '整粒吞，不要咬', icon: '💊' },
+  WARN_DROWSY: { en: 'May cause drowsiness', zh: '会让人想睡觉', short: '想睡', icon: '😴' },
+  WARN_COMPLETE: { en: 'Finish the whole course', zh: '要吃完全部', short: '吃完', icon: '✅' },
+  WARN_NO_ALCOHOL: { en: 'Do not drink alcohol', zh: '不要喝酒', short: '不喝酒', icon: '🚫' },
+  WARN_WATER: { en: 'Drink plenty of water', zh: '要多喝水', short: '多喝水', icon: '💧' },
+  WARN_SWALLOW: { en: 'Swallow whole, do not chew', zh: '整粒吞，不要咬', short: '整粒吞', icon: '💊' },
 };
 
 export const MISC = {

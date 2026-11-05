@@ -2,7 +2,7 @@ import {
   SLOTS, SLOT_ORDER, FREQUENCIES, FOOD, UNITS, PRN_REASONS, WARNINGS, MISC,
   zhQuantity, enQuantity, timingPhrase, zhNumber,
 } from './phrases.js';
-import { buildSchedule, currentSlot, isActive } from './scheduler.js';
+import { buildSchedule, currentSlot, isActive, groupByTime } from './scheduler.js';
 import { refillInfo, refillIcs } from './refill.js';
 import { load, save, blankMedicine, sampleState, emptyState, nextNumber } from './storage.js';
 import { normalizeLabel, usingAiReader, readLabel, readLabelOnDevice } from './extract.js';
@@ -61,18 +61,24 @@ function medIcon(med, cls = 'pill-photo') {
   return `<div class="med-id">${photoHtml(med, cls)}<span class="num-badge" aria-label="Medicine number ${med.number}">${med.number}</span></div>`;
 }
 
-function warningsHtml(med) {
+// Compact chips by default; full wording only in the medicine list.
+function warningsHtml(med, full = false) {
   return (med.warnings || [])
-    .map((w) => WARNINGS[w] && `<span class="warn">${WARNINGS[w].icon} ${WARNINGS[w].zh} <small>${WARNINGS[w].en}</small></span>`)
-    .filter(Boolean)
+    .map((w) => {
+      const x = WARNINGS[w];
+      if (!x) return '';
+      return full
+        ? `<span class="warn">${x.icon} ${x.zh} <small>${x.en}</small></span>`
+        : `<span class="warn" title="${x.en}">${x.icon} ${x.short}</span>`;
+    })
     .join('');
 }
 
-function refillLine(med) {
-  const info = refillInfo(med, todayStr());
-  if (!info) return '';
-  const d = fmtDate(info.runOut);
-  return `<div class="refill-line refill-${info.status}">${d.zh}${MISC.REFILL_BY.zh} · ${MISC.REFILL_BY.en} ${d.en}</div>`;
+// Group heading: meal wording when there is one ("早餐后"), else just the time.
+function groupHeading(group) {
+  const t = timingPhrase(group.slot, group.food);
+  const withMeal = SLOTS[group.slot].meal && group.food !== 'NONE';
+  return { zh: withMeal ? t.zh : '', en: withMeal ? t.en : '', time: to12h(group.time) };
 }
 
 // ---------- speech (prototype: browser text-to-speech) ----------
@@ -146,34 +152,32 @@ function scheduleSheet() {
   const name = state.person.name;
   const d = fmtDate(today);
 
-  const row = (item) => {
-    const { med, slot, time } = item;
-    const t = timingPhrase(slot, med.food);
+  // One row = number + photo, Chinese name + amount, a short English line.
+  const row = (med, extra = '') => {
     const n = medName(med);
     return `<div class="dose-row">
       ${medIcon(med)}
-      <div class="dose-time">${to12h(time)}</div>
       <div class="dose-main">
-        <div class="dose-zh">${esc(t.zh)} · ${MISC.TAKE.zh}${esc(zhQuantity(med.doseQty, med.unit))} · ${esc(n.zh)}</div>
-        <div class="dose-en">${esc(t.en)} · ${MISC.TAKE.en} ${esc(enQuantity(med.doseQty, med.unit))} · ${esc(n.en)}</div>
-        ${warningsHtml(med)}
-        ${refillLine(med)}
+        <div class="dose-zh"><span class="dose-name">${esc(n.zh)}</span> <span class="dose-qty">${esc(zhQuantity(med.doseQty, med.unit))}</span></div>
+        ${extra}
+        <div class="dose-en">${esc(n.en)} · ${esc(enQuantity(med.doseQty, med.unit))}</div>
       </div>
-      <div class="tickbox" aria-hidden="true"></div>
+      <div class="dose-warn">${warningsHtml(med)}</div>
+      ${extra ? '' : '<div class="tickbox" aria-hidden="true"></div>'}
+    </div>`;
+  };
+
+  const group = (g) => {
+    const h = groupHeading(g);
+    return `<div class="dose-group">
+      <h3><span class="dose-group-time">${h.time}</span>${h.zh ? ` ${esc(h.zh)} <small>${esc(h.en)}</small>` : ''}</h3>
+      ${g.items.map((i) => row(i.med)).join('')}
     </div>`;
   };
 
   const prnRow = (med) => {
     const reason = PRN_REASONS[med.prnReason] ?? PRN_REASONS.PRN_GENERIC;
-    const n = medName(med);
-    return `<div class="dose-row">
-      ${medIcon(med)}
-      <div class="dose-main">
-        <div class="dose-zh">${esc(reason.zh)} · ${MISC.TAKE.zh}${esc(zhQuantity(med.doseQty, med.unit))} · ${esc(n.zh)}</div>
-        <div class="dose-en">${esc(reason.en)} · ${MISC.TAKE.en} ${esc(enQuantity(med.doseQty, med.unit))} · ${esc(n.en)}</div>
-        ${warningsHtml(med)}
-      </div>
-    </div>`;
+    return row(med, `<div class="dose-reason">${esc(reason.zh)} <small>${esc(reason.en)}</small></div>`);
   };
 
   return `<article class="sheet">
@@ -183,7 +187,7 @@ function scheduleSheet() {
     </header>
     ${slots.map((s) => `<section class="slot slot-${s.slot}">
       <h2>${SLOTS[s.slot].icon} ${SLOTS[s.slot].zh} <small>${SLOTS[s.slot].en}</small></h2>
-      ${s.items.map(row).join('')}
+      ${groupByTime(s.items).map(group).join('')}
     </section>`).join('')}
     ${asNeeded.length ? `<section class="slot slot-prn">
       <h2>⚠️ 需要的时候才吃 <small>Only when needed</small></h2>
@@ -243,6 +247,7 @@ function viewMeds() {
           <div class="med-info">
             <h3>${esc(med.nameEn)} ${esc(med.strength)} <span class="zh">${esc(med.nicknameZh)}</span></h3>
             <p>${esc(medSummary(med))}</p>
+            ${warningsHtml(med, true)}
             ${inactive ? `<p class="muted">${med.status === 'stopped' ? 'Stopped' : med.endDate && today > med.endDate ? `Course ended ${esc(med.endDate)}` : `Starts ${esc(med.startDate)}`}</p>` : ''}
             ${info ? `<p class="refill-${info.status}">Supply: runs out ${fmtDate(info.runOut).en}${info.status !== 'ok' ? ` — refill now` : ''}</p>` : ''}
           </div>
@@ -510,23 +515,30 @@ function viewElder(slotParam) {
     return info && info.status !== 'ok';
   });
 
-  const card = (item) => {
-    const key = `${item.med.id}:${item.slot}`;
-    const done = !!taken[key];
-    const t = timingPhrase(item.slot, item.med.food);
-    return `<div class="elder-card ${done ? 'done' : ''}">
-      ${medIcon(item.med, 'elder-photo')}
+  // Chinese only here: English is on the caregiver's schedule.
+  const medRow = (med, slot, detail) => {
+    const key = slot ? `${med.id}:${slot}` : null;
+    const done = key && !!taken[key];
+    return `<div class="elder-row ${done ? 'done' : ''}">
+      ${medIcon(med, 'elder-photo')}
       <div class="elder-text">
-        <div class="elder-name">${esc(medName(item.med).zh)}</div>
-        <div class="elder-dose">${esc(t.zh)} ${MISC.TAKE.zh}${esc(zhQuantity(item.med.doseQty, item.med.unit))}</div>
-        <div class="elder-en">${esc(t.en)} · ${esc(enQuantity(item.med.doseQty, item.med.unit))} · ${esc(medName(item.med).en)}</div>
-        ${warningsHtml(item.med)}
+        <div class="elder-name">${esc(medName(med).zh)}</div>
+        <div class="elder-dose">${detail}</div>
+        ${warningsHtml(med)}
       </div>
       <div class="elder-buttons">
-        <button class="big listen" data-speak="${item.med.id}" data-slot="${item.slot}">🔊 听</button>
-        <button class="big take" data-take="${key}">${done ? '✓ 吃了' : '我吃了'}</button>
+        <button class="big listen" data-speak="${med.id}"${slot ? ` data-slot="${slot}"` : ''}>🔊 听</button>
+        ${key ? `<button class="big take" data-take="${key}">${done ? '✓ 吃了' : '我吃了'}</button>` : ''}
       </div>
     </div>`;
+  };
+
+  const groupCard = (g) => {
+    const h = groupHeading(g);
+    return `<section class="elder-card">
+      <h2 class="elder-group-head">${esc(h.zh || SLOTS[g.slot].zh)} <span>${h.time}</span></h2>
+      ${g.items.map((i) => medRow(i.med, i.slot, `${MISC.TAKE.zh}${esc(zhQuantity(i.med.doseQty, i.med.unit))}`)).join('')}
+    </section>`;
   };
 
   return `<div class="elder">
@@ -547,17 +559,13 @@ function viewElder(slotParam) {
     </nav>
     <main class="elder-main">
       ${slotParam === 'prn'
-        ? asNeeded.map((med) => `<div class="elder-card">
-            ${medIcon(med, 'elder-photo')}
-            <div class="elder-text">
-              <div class="elder-name">${esc(medName(med).zh)}</div>
-              <div class="elder-dose">${esc((PRN_REASONS[med.prnReason] ?? PRN_REASONS.PRN_GENERIC).zh)}</div>
-              <div class="elder-en">${esc((PRN_REASONS[med.prnReason] ?? PRN_REASONS.PRN_GENERIC).en)} · ${esc(enQuantity(med.doseQty, med.unit))} · ${esc(medName(med).en)}</div>
-            </div>
-            <div class="elder-buttons"><button class="big listen" data-speak="${med.id}">🔊 听</button></div>
-          </div>`).join('')
+        ? `<section class="elder-card">
+            <h2 class="elder-group-head">需要的时候才吃</h2>
+            ${asNeeded.map((med) => medRow(med, null,
+              `${esc((PRN_REASONS[med.prnReason] ?? PRN_REASONS.PRN_GENERIC).zh)}，${MISC.TAKE.zh}${esc(zhQuantity(med.doseQty, med.unit))}`)).join('')}
+          </section>`
         : current
-          ? current.items.map(card).join('')
+          ? groupByTime(current.items).map(groupCard).join('')
           : '<p class="elder-empty">今天没有药 · No medicines today</p>'}
     </main>
   </div>`;
