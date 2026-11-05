@@ -71,6 +71,34 @@ export function groupByTime(items) {
   return [...groups.values()];
 }
 
+// What the elder's "Now" screen shows. Picks the current part of the day,
+// skips ahead past a part that is fully ticked, and lists earlier parts that
+// still have unticked doses (shown as information only — the app never says
+// to take a missed dose late).
+//   slot:    part of the day to show, or null when nothing is left today
+//   missed:  [{ slot, count }] earlier parts with unticked doses
+//   allDone: every dose today is ticked
+export function elderNow(schedule, routine, nowHHMM, taken) {
+  const isTaken = (i) => !!taken[`${i.med.id}:${i.slot}`];
+  const now = toMinutes(nowHHMM);
+  const dayOver = now > toMinutes(routine.bed) + 60;
+  const from = dayOver ? SLOT_ORDER.length : SLOT_ORDER.indexOf(currentSlot(routine, nowHHMM));
+  const order = (s) => SLOT_ORDER.indexOf(s.slot);
+
+  const missed = schedule.slots
+    .filter((s) => order(s) < from)
+    .map((s) => ({ slot: s.slot, count: s.items.filter((i) => !isTaken(i)).length }))
+    .filter((m) => m.count > 0);
+  const next = schedule.slots.find((s) => order(s) >= from && s.items.some((i) => !isTaken(i)));
+  const allDone = schedule.slots.every((s) => s.items.every(isTaken));
+  return { slot: next?.slot ?? null, missed, allDone };
+}
+
+// "now" once it is within 30 minutes of the dose time, otherwise "later".
+export function groupStatus(groupTime, nowHHMM) {
+  return toMinutes(nowHHMM) >= toMinutes(groupTime) - 30 ? 'now' : 'later';
+}
+
 // Which slot the elder should look at right now: the next one not yet
 // past by more than an hour, wrapping to morning after bedtime.
 export function currentSlot(routine, nowHHMM) {

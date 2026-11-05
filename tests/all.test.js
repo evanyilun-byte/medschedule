@@ -1,5 +1,5 @@
 import { test, eq } from './harness.js';
-import { buildSchedule, doseTime, dosesPerDay, currentSlot, DEFAULT_ROUTINE, toHHMM, groupByTime } from '../js/scheduler.js';
+import { buildSchedule, doseTime, dosesPerDay, currentSlot, DEFAULT_ROUTINE, toHHMM, groupByTime, elderNow, groupStatus } from '../js/scheduler.js';
 import { refillInfo, addDays, daysBetween } from '../js/refill.js';
 import { zhQuantity, enQuantity, timingPhrase, FREQUENCIES, FOOD } from '../js/phrases.js';
 
@@ -90,6 +90,41 @@ test('groupByTime: same time and meal wording share a heading', () => {
 test('groupByTime: bedtime doses group together whatever the food code', () => {
   const sched = buildSchedule([med({ id: 'x', frequency: 'ON', food: 'AFTER' }), med({ id: 'y', frequency: 'ON', food: 'NONE' })], R, TODAY);
   eq(groupByTime(sched.slots[0].items).map((g) => g.items.length), [2]);
+});
+
+// --- elder "Now" screen ---
+const day = buildSchedule(
+  [med({ id: 'bp', frequency: 'OM', food: 'NONE' }), med({ id: 'dm', frequency: 'BD', food: 'AFTER' }), med({ id: 'st', frequency: 'ON' })],
+  R,
+  TODAY,
+); // morning: bp 07:00, dm 07:30 · evening: dm 19:00 · bedtime: st 21:30
+const tick = (...keys) => Object.fromEntries(keys.map((k) => [k, true]));
+
+test('elderNow: early morning shows morning, nothing missed', () => {
+  eq(elderNow(day, R, '05:00', {}), { slot: 'morning', missed: [], allDone: false });
+});
+
+test('elderNow: skips a part of the day that is already fully ticked', () => {
+  eq(elderNow(day, R, '07:45', tick('bp:morning', 'dm:morning')).slot, 'evening');
+});
+
+test('elderNow: lunchtime with no noon medicines shows the next part (evening)', () => {
+  eq(elderNow(day, R, '12:00', tick('bp:morning', 'dm:morning')).slot, 'evening');
+});
+
+test('elderNow: unticked earlier doses are reported as missed', () => {
+  eq(elderNow(day, R, '15:00', tick('bp:morning')).missed, [{ slot: 'morning', count: 1 }]);
+});
+
+test('elderNow: after bedtime nothing is left; missed and all-done are reported', () => {
+  eq(elderNow(day, R, '23:00', tick('bp:morning', 'dm:morning', 'dm:evening')), {
+    slot: null, missed: [{ slot: 'bedtime', count: 1 }], allDone: false,
+  });
+  eq(elderNow(day, R, '23:00', tick('bp:morning', 'dm:morning', 'dm:evening', 'st:bedtime')).allDone, true);
+});
+
+test('groupStatus: "now" from 30 minutes before the dose time', () => {
+  eq(['06:59', '07:00', '07:30', '09:00'].map((t) => groupStatus('07:30', t)), ['later', 'now', 'now', 'now']);
 });
 
 test('PRN medicines go to the as-needed list only', () => {

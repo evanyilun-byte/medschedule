@@ -2,7 +2,7 @@ import {
   SLOTS, SLOT_ORDER, FREQUENCIES, FOOD, UNITS, PRN_REASONS, WARNINGS, MISC,
   zhQuantity, enQuantity, timingPhrase, zhNumber,
 } from './phrases.js';
-import { buildSchedule, currentSlot, isActive, groupByTime } from './scheduler.js';
+import { buildSchedule, isActive, groupByTime, elderNow, groupStatus } from './scheduler.js';
 import { refillInfo, refillIcs } from './refill.js';
 import {
   load, save, blankMedicine, sampleMedicines, emptyState, takeNumber, syncLastNumber, newProfile, activeProfile, allMedicines,
@@ -542,14 +542,42 @@ function viewElderPicker() {
   </div>`;
 }
 
+// The automatic "Now" screen remembers what it last showed, so the update
+// timer only redraws when that changes. elderHold keeps the shown part of
+// the day in place right after a tap, so a card never vanishes mid-use.
+let elderShown = { key: '' };
+let elderHold = null;
+
+function elderNowInfo() {
+  const today = todayStr();
+  const now = nowHHMM();
+  const sched = buildSchedule(P().medicines, P().routine, today);
+  const info = elderNow(sched, P().routine, now, P().taken[today] || {});
+  const shown = sched.slots.find((s) => s.slot === info.slot);
+  const statuses = shown ? groupByTime(shown.items).map((g) => groupStatus(g.time, now)) : [];
+  return { info, key: JSON.stringify([today, P().id, info, statuses]) };
+}
+
+function isAutoElderRoute() {
+  const [, route, param] = (location.hash || '').split('/');
+  return route === 'elder' && (param === 'now' || (!param && state.profiles.length === 1));
+}
+
 function viewElder(slotParam) {
   if (!slotParam && state.profiles.length > 1) return viewElderPicker();
   if (slotParam === 'now') slotParam = undefined;
+  const auto = !slotParam;
   const today = todayStr();
+  const now = nowHHMM();
   const { slots, asNeeded } = buildSchedule(P().medicines, P().routine, today);
-  const present = slots.map((s) => s.slot);
-  let slot = SLOT_ORDER.includes(slotParam) ? slotParam : currentSlot(P().routine, nowHHMM());
-  if (!slotParam && !present.includes(slot)) slot = present.find((s) => SLOT_ORDER.indexOf(s) >= SLOT_ORDER.indexOf(slot)) ?? present[0];
+  let slot = slotParam;
+  let nowInfo = null;
+  if (auto) {
+    const { info, key } = elderNowInfo();
+    nowInfo = info;
+    slot = elderHold ?? info.slot;
+    elderShown = { key, slot };
+  }
   const current = slots.find((s) => s.slot === slot);
   const taken = P().taken[today] || {};
   const d = new Date();
@@ -586,6 +614,9 @@ function viewElder(slotParam) {
     const headEn = h.en || SLOTS[g.slot].en;
     return `<section class="elder-card">
       <h2 class="elder-group-head"><b>${esc(h.zh || SLOTS[g.slot].zh)}</b> <span>${h.time}</span>${bilingual ? `<small>${esc(headEn)}</small>` : ''}</h2>
+      ${auto ? (groupStatus(g.time, now) === 'now'
+        ? `<p class="pill pill-now">现在吃${bilingual ? ' · Take now' : ''}</p>`
+        : `<p class="pill pill-later">还没到时间${bilingual ? ' · Not yet' : ''}</p>`) : ''}
       ${g.items.map((i) => medRow(i.med, i.slot,
         `${MISC.TAKE.zh}${esc(zhQuantity(i.med.doseQty, i.med.unit))}`,
         `${MISC.TAKE.en} ${enQuantity(i.med.doseQty, i.med.unit)}`)).join('')}
@@ -605,13 +636,15 @@ function viewElder(slotParam) {
       🔔 ${MISC.REFILL_SOON.zh} 🔊
       <small>${refillDue.map((m) => `${m.number}${MISC.NUMBER_SUFFIX.zh} ${esc(medName(m).zh)}`).join('、')} · ${MISC.REFILL_SOON.en}</small>
     </button>` : ''}
+    ${auto ? '<details class="other-times"><summary>看其他时间 <small>Other times</small></summary>' : '<a class="button back-now" href="#/elder/now">← 现在 <small>Back to now</small></a>'}
     <nav class="elder-slots">
       ${slots.map((s) => {
         const all = s.items.every((i) => taken[`${i.med.id}:${i.slot}`]);
-        return `<a href="#/elder/${s.slot}" class="${s.slot === slot && slotParam !== 'prn' ? 'active' : ''}">${SLOTS[s.slot].icon}<br>${SLOTS[s.slot].zh}${all ? ' ✓' : ''}${bilingual ? `<small>${SLOTS[s.slot].en}</small>` : ''}</a>`;
+        return `<a href="#/elder/${s.slot}" class="${!auto && s.slot === slot ? 'active' : ''}">${SLOTS[s.slot].icon}<br>${SLOTS[s.slot].zh}${all ? ' ✓' : ''}${bilingual ? `<small>${SLOTS[s.slot].en}</small>` : ''}</a>`;
       }).join('')}
       ${asNeeded.length ? `<a href="#/elder/prn" class="${slotParam === 'prn' ? 'active' : ''}">⚠️<br>需要时${bilingual ? '<small>If needed</small>' : ''}</a>` : ''}
     </nav>
+    ${auto ? '</details>' : ''}
     <main class="elder-main">
       ${slotParam === 'prn'
         ? `<section class="elder-card">
@@ -623,9 +656,17 @@ function viewElder(slotParam) {
                 `${reason.en} · ${MISC.TAKE.en} ${enQuantity(med.doseQty, med.unit)}`);
             }).join('')}
           </section>`
-        : current
-          ? groupByTime(current.items).map(groupCard).join('')
-          : '<p class="elder-empty">今天没有药 · No medicines today</p>'}
+        : `${auto && nowInfo.missed.length ? `<div class="elder-missed">
+              ⚠️ ${nowInfo.missed.map((m) => `<a href="#/elder/${m.slot}">${SLOTS[m.slot].zh}</a>`).join('、')}的药还没打勾
+              <small>不确定请问家人${bilingual ? ' · Not ticked yet — ask family if unsure' : ''}</small>
+            </div>` : ''}
+          ${current
+            ? groupByTime(current.items).map(groupCard).join('')
+            : !slots.length
+              ? '<p class="elder-empty">今天没有药 · No medicines today</p>'
+              : nowInfo?.allDone
+                ? `<p class="elder-done">✓ 今天的药吃完了${bilingual ? '<small>All done for today</small>' : ''}</p>`
+                : `<p class="elder-empty">今天没有其他药了${bilingual ? '<small>No more medicines today</small>' : ''}</p>`}`}
     </main>
   </div>`;
 }
@@ -729,6 +770,7 @@ app.addEventListener('click', (e) => {
   else if (d.speak) speak(speakText(findMed(d.speak), d.slot));
   else if (d.speakText) speak(d.speakText);
   else if (d.take) {
+    if (isAutoElderRoute()) elderHold = elderShown.slot ?? null; // don't jump right after a tap
     const today = todayStr();
     const day = (P().taken = { [today]: P().taken[today] || {} })[today]; // keep only today
     day[d.take] = !day[d.take];
@@ -772,6 +814,34 @@ app.addEventListener('submit', (e) => {
   }
 });
 
-window.addEventListener('hashchange', render);
+window.addEventListener('hashchange', () => {
+  elderHold = null;
+  render();
+});
+
+// ---------- elder "Now" screen: keep it up to date ----------
+// Rule 1: only redraw when what it should show changes (part of the day,
+//         now/not-yet, ticks, date) — a few times a day, not every minute.
+// Rule 2: never move a screen someone chose (a tab, or the picker).
+// Rule 3: wait while the screen was touched in the last 30 s or audio plays.
+// performance.now() is unaffected by the phone's clock being changed.
+let lastTouch = -Infinity;
+document.addEventListener('pointerdown', () => { lastTouch = performance.now(); }, true);
+
+function refreshElderNow() {
+  if (!isAutoElderRoute()) return; // rule 2
+  if (performance.now() - lastTouch < 30000) return; // rule 3
+  if ('speechSynthesis' in window && speechSynthesis.speaking) return; // rule 3
+  const { key } = elderNowInfo();
+  if (key === elderShown.key && !elderHold) return; // rule 1
+  elderHold = null;
+  render();
+}
+
+setInterval(refreshElderNow, 60000);
+// Timers pause while the screen is off, so check as soon as the phone wakes.
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) refreshElderNow();
+});
 if ('speechSynthesis' in window) speechSynthesis.getVoices(); // warm up voice list
 render();

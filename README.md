@@ -42,7 +42,7 @@ js/extract.js       answer checking before it reaches the form     — pure, tes
 js/storage.js       browser storage + example patient
 js/app.js           views: schedule/print, medicines, routine, elder view
 css/styles.css      large-print screen, phone and A4 print styles
-tests/              94 unit tests
+tests/              100 unit tests
 ```
 
 - **No build step, no server.** Plain HTML/CSS/JavaScript modules, hosted free on GitHub Pages.
@@ -51,6 +51,20 @@ tests/              94 unit tests
 - **Scheduling:** `BD + after food` → after breakfast and after dinner; `TDS + before food` → 30 min before each meal; `ON` → bedtime. Times come from the person's routine.
 - **Refills:** `run-out = dispensed date + ⌊quantity ÷ (dose × doses per day)⌋`; reminder 7 days before (adjustable). No reminder for "when needed" medicines or short courses that end first. "I counted…" lets the caregiver correct the count.
 - **Audio:** uses the browser's built-in Mandarin text-to-speech for now.
+
+## Elder view shows what to take now
+
+The elder view reads the phone's clock and shows **only the medicines for the current part of the day**. There's nothing to choose:
+
+- Each time group is marked **现在吃 Take now** (from 30 minutes before the dose time) or **还没到时间 Not yet**.
+- Once a part of the day is fully ticked, it moves on to the next one. When everything is ticked: **✓ 今天的药吃完了 All done for today**.
+- Earlier doses that weren't ticked are shown as information only, "早上的药还没打勾 · 不确定请问家人 (ask family if unsure)". **It never tells anyone to take a missed dose late**, since that can mean doubling up.
+- The time tabs are tucked under **看其他时间 Other times** for caregivers, with **← 现在 Back to now** to return.
+
+It keeps itself up to date while left open, following three rules so the screen never moves under someone's finger:
+1. It only redraws when what it should show changes (a few times a day), checking once a minute and as soon as the phone wakes. The browser pauses the timer while the screen is off, so battery use is negligible.
+2. It never moves a screen someone chose (a tab or the person picker).
+3. It waits until the screen hasn't been touched for 30 seconds and no audio is playing. Right after the last tick, the ✓ cards stay in place before it moves on.
 
 ## Several people in one household
 
