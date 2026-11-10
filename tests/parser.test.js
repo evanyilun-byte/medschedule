@@ -167,6 +167,54 @@ test('parser: clinic/patient lines are not mistaken for the drug name', () => {
   eq(parseLabelText('DR LIM 50MG CLINIC\nASPIRIN 100MG\nTAKE 1 TAB OD').medicine_name, 'Aspirin');
 });
 
+// --- drug names on real photos ---
+const nameOf = (t) => parseLabelText(t).medicine_name;
+const nameSure = (t) => !parseLabelText(t).uncertain_fields.includes('medicine_name');
+
+test('name: columns merged into one line by the text reader', () => {
+  const t = 'TAN AH MA METFORMIN 500MG TABLET DATE 05/11/2026\nTAKE 1 TABLET 2 TIMES A DAY AFTER FOOD';
+  eq(nameOf(t), 'Metformin');
+  eq(nameSure(t), false); // cut out of a busy line → flagged for checking
+  eq(parseLabelText(t).strength, '500mg');
+});
+
+test('name: patient title and long name before the drug', () => {
+  eq(nameOf('PATIENT: TAN BENG HUAT METFORMIN 500MG\nTAKE 1 TAB BD'), 'Metformin');
+  eq(nameOf('NAME: LIM SIEW LING AMLODIPINE BESYLATE 5MG\nTAKE 1 TAB OM'), 'Amlodipine Besylate');
+});
+
+test('name: shares its line with the quantity (real photo, two columns)', () => {
+  const t = 'BEDOK POLYCLINIC Tel: 6243 6740\nTAN AH MA Date: 03/11/2026\nAmlodipine 5 mg tablet Qty: 30 TAB\nTake 1 tablet once a day in the morning';
+  const r = parseLabelText(t);
+  eq([r.medicine_name, r.strength, r.quantity_supplied, r.frequency, r.dispensed_on], ['Amlodipine', '5mg', 30, 'OM', '2026-11-03']);
+});
+
+test('name: on the line above its strength', () => {
+  eq(nameOf('AMLODIPINE\n5MG TABLET\nTAKE 1 TABLET EVERY MORNING'), 'Amlodipine');
+});
+
+test('name: no strength printed, found before the dosage form', () => {
+  const t = 'PANADOL TABLETS\nTAKE 2 TABLETS WHEN NEEDED FOR PAIN';
+  eq(nameOf(t), 'Panadol');
+  eq(nameSure(t), false);
+});
+
+test('name: two-word names and release qualifiers are kept whole', () => {
+  eq(nameOf('GLYCERYL TRINITRATE 0.5MG\nPUT 1 TABLET UNDER TONGUE'), 'Glyceryl Trinitrate');
+  eq(nameOf('NIFEDIPINE XL 30MG\nTAKE 1 TAB OM'), 'Nifedipine Xl');
+  eq(nameSure('AMLODIPINE 5MG\nTAKE 1 TAB OM'), true);
+});
+
+test('name: OCR slips in the strength (m9, O for 0)', () => {
+  eq(parseLabelText('METFORMIN 500M9\nTAKE 1 TAB BD').strength, '500mg');
+  eq(parseLabelText('METFORMIN 5OOMG\nTAKE 1 TAB BD').strength, '500mg');
+  eq(nameOf('METFORMIN 5OOMG\nTAKE 1 TAB BD'), 'Metformin');
+});
+
+test('name: a doctor\'s name next to a number is not taken as the drug', () => {
+  eq(nameOf('DR LIM 50MG CLINIC\nASPIRIN 100MG\nTAKE 1 TAB OD'), 'Aspirin');
+});
+
 test('parser: not a label → unreadable', () => {
   eq(parseLabelText('HELLO WORLD\nRECEIPT TOTAL $12.40'), { readable: false });
   eq(parseLabelText(''), { readable: false });

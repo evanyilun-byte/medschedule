@@ -42,7 +42,7 @@ js/extract.js       answer checking before it reaches the form     — pure, tes
 js/storage.js       browser storage + example patient
 js/app.js           views: schedule/print, medicines, routine, elder view
 css/styles.css      large-print screen, phone and A4 print styles
-tests/              111 unit tests
+tests/              119 unit tests
 ```
 
 - **No build step, no server.** Plain HTML/CSS/JavaScript modules, hosted free on GitHub Pages.

@@ -15,8 +15,18 @@ const UNIT_WORDS = {
 const UNIT_RE = Object.values(UNIT_WORDS).join('|');
 const MONTHS = { JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6, JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12 };
 const STRENGTH_RE = /(\d+(?:\.\d+)?)\s?(MCG|MG|ML|G|%|IU)(?![A-Z])/;
-// Lines that are clinic/patient details rather than the drug name.
-const NOT_NAME = /\b(TAKE|QTY|QUANTITY|DATE|PATIENT|NAME|CLINIC|POLYCLINIC|HOSPITAL|PHARMACY|TEL|NRIC|DR|DOCTOR|KEEP|EXP|REG|SINGAPORE)\b/;
+// Words that end the search for a drug name: clinic/patient details. On real
+// photos the text reader often merges side-by-side columns into one line
+// ("TAN AH MA  METFORMIN 500MG  DATE 05/11/26"), so a line is never thrown
+// away for containing these — the name is cut out from beside them instead.
+const STOP_WORD = /^(TAKE|QTY|QUANTITY|DATE|PATIENT|NAME|CLINIC|POLYCLINIC|HOSPITAL|PHARMACY|TEL|NRIC|DR|DOCTOR|KEEP|EXP|EXPIRY|REG|SINGAPORE|MR|MRS|MS|MDM|REF|RX|NO)$/;
+const PERSON_TITLE = /^(DR|DOCTOR|PATIENT|NAME|MR|MRS|MS|MDM)$/;
+// Release qualifiers and salts that belong to the drug name.
+const NAME_SUFFIX = /^(SR|XR|ER|XL|MR|CR|LA|HCL|HYDROCHLORIDE|SODIUM|POTASSIUM|CALCIUM|BESYLATE|MALEATE|MESYLATE|FUMARATE|SUCCINATE|TARTRATE|RETARD|FORTE)$/;
+const DOSAGE_FORM = /\b(TABLETS?|TABS?|CAPSULES?|CAPS?|SYRUP|SUSPENSION|MIXTURE|SOLUTION|EYE DROPS?|EAR DROPS?|DROPS|INHALER|CREAM|OINTMENT|GEL|NASAL SPRAY|SACHETS?|LOZENGES?|PATCH)\b/;
+// Dosing lines never hold the drug name. (Not QTY: on many labels the
+// quantity sits on the same line as the name, "AMLODIPINE 5MG TAB  QTY: 30".)
+const INSTRUCTION_LINE = /\b(TAKE|USE|INHALE|APPLY|GIVE|INSTIL+|PUT|SPRAY)\b/;
 
 const toNumber = (s) => WORD_NUMBERS[s] ?? Number(s);
 
@@ -26,6 +36,8 @@ export function cleanText(raw) {
     .toUpperCase()
     .replace(/[‘’`]/g, "'")
     .replace(/(\d)[O](?=\d|\s*(?:MG|TAB|CAP))/g, '$10')
+    .replace(/\b(\d+)([O0]+)(?=\s*(?:MCG|MG|ML|G)\b)/g, (m, a, b) => a + b.replace(/O/g, '0'))
+    .replace(/(\d)\s?M[9Q](?![A-Z])/g, '$1MG')
     .replace(/\b[IL](?=\s*(?:TAB|CAP|TIME|DROP|PUFF))/g, '1')
     .replace(/[ \t]+/g, ' ')
     .split('\n')
@@ -38,19 +50,62 @@ function unitFrom(word) {
   return Object.entries(UNIT_WORDS).find(([, re]) => new RegExp(`^(?:${re})$`).test(word))?.[0] ?? null;
 }
 
+const titleCase = (words) => words.join(' ').toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase());
+
+// The drug name from the words just before a marker (a strength or a dosage
+// form). Returns { name, sure } or null when the words look like a person.
+function nameBefore(text) {
+  const words = text.replace(/[^A-Z\s-]/g, ' ').split(/\s+/).filter(Boolean);
+  let seg = [];
+  let cutBy = null;
+  for (let i = words.length - 1; i >= 0; i--) {
+    if (STOP_WORD.test(words.at(i))) {
+      cutBy = words.at(i);
+      break;
+    }
+    seg.unshift(words.at(i));
+  }
+  // Short words (AH, MA, LI) are usually part of a person's name: keep only
+  // what comes after the last one. Release qualifiers like XR are not.
+  const lastShort = seg.findLastIndex((w) => w.length <= 2 && !NAME_SUFFIX.test(w));
+  const cutShort = lastShort >= 0;
+  if (cutShort) seg = seg.slice(lastShort + 1);
+  if (!seg.length) return null;
+  if (cutBy && PERSON_TITLE.test(cutBy) && seg.length === 1) return null; // "DR LIM 50MG"
+  if (seg.length <= 2 && !(cutBy && PERSON_TITLE.test(cutBy))) return { name: titleCase(seg), sure: !cutBy && !cutShort };
+  // Longer runs: the name is the last word (plus a salt or qualifier after it).
+  const last = seg.at(-1);
+  const take = NAME_SUFFIX.test(last) && seg.length >= 2 ? seg.slice(-2) : [last];
+  return { name: titleCase(take), sure: false };
+}
+
+// Returns { name, strength, sure }. `sure` is false whenever the name was cut
+// out of a busy line or found another way, so the review flags it.
 function findName(lines) {
-  for (const line of lines) {
-    if (NOT_NAME.test(line)) continue;
+  let strength = null;
+  for (const [i, line] of lines.entries()) {
+    if (INSTRUCTION_LINE.test(line)) continue;
     const m = line.match(STRENGTH_RE);
     if (!m) continue;
-    const before = line.slice(0, m.index).replace(/[^A-Z\s-]/g, ' ').trim();
-    const words = before.split(/\s+/).filter((w) => w.length >= 3);
-    if (words.length) {
-      const name = words.join(' ').toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase());
-      return { name, strength: `${m[1]}${m[2].toLowerCase()}` };
+    strength ??= `${m[1]}${m[2].toLowerCase()}`;
+    const found = nameBefore(line.slice(0, m.index));
+    if (found) return { ...found, strength: `${m[1]}${m[2].toLowerCase()}` };
+    // Strength at the start of its line: the name may be on the line above.
+    const prev = lines.at(i - 1);
+    if (i > 0 && !line.slice(0, m.index).trim() && prev && !INSTRUCTION_LINE.test(prev) && !STRENGTH_RE.test(prev)) {
+      const above = nameBefore(prev);
+      if (above) return { name: above.name, sure: false, strength: `${m[1]}${m[2].toLowerCase()}` };
     }
   }
-  return { name: null, strength: null };
+  // No usable strength line: try the word before a dosage form ("PANADOL TABLETS").
+  for (const line of lines) {
+    if (INSTRUCTION_LINE.test(line)) continue;
+    const m = line.match(DOSAGE_FORM);
+    if (!m) continue;
+    const found = nameBefore(line.slice(0, m.index));
+    if (found) return { name: found.name, sure: false, strength };
+  }
+  return { name: null, sure: false, strength };
 }
 
 function findDose(text) {
@@ -182,7 +237,7 @@ function findDuration(text) {
 export function parseLabelText(rawText, ocrConfidence = 100) {
   const text = cleanText(rawText);
   const lines = text.split('\n');
-  const { name, strength } = findName(lines);
+  const { name, strength, sure: nameSure } = findName(lines);
   const { dose, unit } = findDose(text);
   const { frequency, ambiguous } = findFrequency(text);
   const food = findFood(text);
@@ -192,7 +247,7 @@ export function parseLabelText(rawText, ocrConfidence = 100) {
   }
 
   const uncertain = [];
-  if (!name) uncertain.push('medicine_name');
+  if (!name || !nameSure) uncertain.push('medicine_name');
   if (dose == null) uncertain.push('dose_qty');
   if (!unit) uncertain.push('unit');
   if (!frequency || ambiguous) uncertain.push('frequency');

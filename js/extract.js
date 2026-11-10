@@ -139,7 +139,9 @@ const ERRORS = {
 // Free path: on-device OCR + rule-based parser. Returns the backend shape.
 export async function readLabelOnDevice(file, progress) {
   const { text, confidence } = await recognizeLabel(file, progress);
-  return parseLabelText(text, confidence);
+  // Keep the raw text so the caregiver can see what was read (and why a
+  // field might be blank).
+  return { ...parseLabelText(text, confidence), ocr_text: text, ocr_confidence: Math.round(confidence) };
 }
 
 export async function readLabel(imageBase64, mediaType, accessCode) {

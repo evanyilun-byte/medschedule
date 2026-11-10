@@ -416,9 +416,14 @@ async function scanLabel(form, file) {
       ? await readLabel(dataUrl.split(',')[1], 'image/jpeg', state.settings?.accessCode)
       : await readLabelOnDevice(file, (pct) => { status.textContent = `Reading the label… ${pct}% 正在读取`; });
     const result = normalizeLabel(label, todayStr());
+    const readText = label?.ocr_text?.trim()
+      ? `<details class="ocr-text"><summary>What the scanner read 识别的文字 (${label.ocr_confidence}% sure)</summary><pre>${esc(label.ocr_text.trim())}</pre></details>`
+      : '';
     if (result.unreadable) {
       status.className = 'scan-error';
       status.textContent = 'This does not look like a readable medicine label. Try a clearer photo, or type the details in.';
+      review.innerHTML = readText;
+      review.classList.toggle('hidden', !readText);
       return;
     }
     fillForm(form, result.values, result.uncertain);
@@ -431,6 +436,7 @@ async function scanLabel(form, file) {
         ${result.instructionText ? `<p>Label says: <q>${esc(result.instructionText)}</q></p>` : ''}
         ${flagged.length ? `<p class="refill-soon">⚠️ Please check closely: <strong>${esc(flagged.join(', '))}</strong></p>` : ''}
         ${result.notes ? `<p class="muted">Note: ${esc(result.notes)}</p>` : ''}
+        ${readText}
       </div>`;
     review.classList.remove('hidden');
     const confirmBox = form.querySelector('.review-confirm');
