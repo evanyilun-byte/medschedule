@@ -87,14 +87,16 @@ function groupHeading(group) {
 
 // ---------- speech (prototype: browser text-to-speech) ----------
 
+// Spoken in the same order as the card reads: number, nickname (if any),
+// then when and how much — "三号药，胃药，早餐前，吃一粒".
 function speakText(med, slot) {
   const t = slot ? timingPhrase(slot, med.food) : null;
   const parts = [];
   if (med.number) parts.push(`${zhNumber(med.number)}${MISC.NUMBER_SUFFIX.zh}`);
+  if (med.nicknameZh) parts.push(med.nicknameZh);
   if (t) parts.push(t.zh);
   else parts.push(PRN_REASONS[med.prnReason]?.zh ?? PRN_REASONS.PRN_GENERIC.zh);
   parts.push(doseAction(med).zh);
-  if (med.nicknameZh) parts.push(med.nicknameZh); // the number already opened the sentence
   if (!slot && limitPhrase(med)) parts.push(limitPhrase(med).zh);
   for (const w of med.warnings || []) if (WARNINGS[w]) parts.push(WARNINGS[w].zh);
   return parts.join('，') + '。';
@@ -173,7 +175,7 @@ function scheduleSheet() {
     return `<div class="dose-row">
       ${medIcon(med)}
       <div class="dose-main">
-        <div class="dose-zh"><span class="dose-name">${esc(n.zh)}</span> <span class="dose-qty">${esc(doseAction(med).zh)}</span></div>
+        <div class="dose-zh"><span class="dose-name">${esc(n.zh)}</span>${med.nicknameZh ? ` <span class="dose-nick">${esc(med.nicknameZh)}</span>` : ''} <span class="dose-qty">${esc(doseAction(med).zh)}</span></div>
         ${extra}
         <div class="dose-en">${esc(n.en)} · ${esc(doseAction(med).en)}</div>
       </div>
@@ -647,6 +649,7 @@ function viewElder(slotParam) {
       ${medIcon(med, 'elder-photo')}
       <div class="elder-text">
         <div class="elder-name">${esc(medName(med).zh)}</div>
+        ${med.nicknameZh ? `<div class="elder-nick">${esc(med.nicknameZh)}</div>` : ''}
         <div class="elder-en-name">${esc(medName(med).en)}</div>
         <div class="elder-dose">${detail}</div>
         ${bilingual ? `<div class="elder-en">${esc(detailEn)}</div>` : ''}

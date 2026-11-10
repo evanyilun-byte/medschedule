@@ -198,8 +198,8 @@ test('dose verbs: never "eat" a drop or a puff', () => {
   }
 });
 
-test('elder name: nickname, else the packet number — never the English name', () => {
-  eq(zhName({ nicknameZh: '降血压药', number: 3, nameEn: 'Amlodipine' }), '降血压药');
+test('elder title: always the packet number, nickname or not', () => {
+  eq(zhName({ nicknameZh: '降血压药', number: 3, nameEn: 'Amlodipine' }), '3号药');
   eq(zhName({ nicknameZh: '', number: 3, nameEn: 'Amlodipine' }), '3号药');
   eq(zhName({ nicknameZh: '', nameEn: 'Amlodipine' }), 'Amlodipine'); // no number yet (never saved)
 });

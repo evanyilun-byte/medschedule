@@ -94,12 +94,12 @@ export function doseAction(med) {
   }
 }
 
-// The name the elder sees. Without a Chinese nickname it is the packet
-// number ("3号药"), never the English drug name, which they can't read.
+// The title the elder sees: always the packet number ("3号药"), the same on
+// every card and on the packet. A nickname, if any, is shown under it; the
+// English drug name, which they can't read, is never the title.
 export function zhName(med) {
-  if (med.nicknameZh) return med.nicknameZh;
   if (med.number) return `${med.number}${MISC.NUMBER_SUFFIX.zh}`;
-  return med.nameEn;
+  return med.nicknameZh || med.nameEn; // not saved yet, so no number
 }
 
 // Words on the elder's tick button, matching the verb above.
