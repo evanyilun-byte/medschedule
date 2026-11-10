@@ -1,7 +1,7 @@
 import { test, eq } from './harness.js';
 import { buildSchedule, doseTime, dosesPerDay, currentSlot, DEFAULT_ROUTINE, toHHMM, groupByTime, elderNow, groupStatus } from '../js/scheduler.js';
 import { refillInfo, addDays, daysBetween } from '../js/refill.js';
-import { zhQuantity, enQuantity, timingPhrase, FREQUENCIES, FOOD, doseAction, limitPhrase, takenWords } from '../js/phrases.js';
+import { zhQuantity, enQuantity, timingPhrase, FREQUENCIES, FOOD, doseAction, limitPhrase, takenWords, zhName } from '../js/phrases.js';
 
 const R = DEFAULT_ROUTINE; // breakfast 07:00, lunch 12:00, dinner 18:30, bed 21:30
 const TODAY = '2026-11-04';
@@ -196,6 +196,12 @@ test('dose verbs: never "eat" a drop or a puff', () => {
   for (const unit of ['drop', 'puff']) for (const route of ['eye', 'ear', 'nose', 'mouth', '']) {
     eq(act({ unit, route, side: 'both' }).zh.includes('吃'), false, `${unit}/${route}`);
   }
+});
+
+test('elder name: nickname, else the packet number — never the English name', () => {
+  eq(zhName({ nicknameZh: '降血压药', number: 3, nameEn: 'Amlodipine' }), '降血压药');
+  eq(zhName({ nicknameZh: '', number: 3, nameEn: 'Amlodipine' }), '3号药');
+  eq(zhName({ nicknameZh: '', nameEn: 'Amlodipine' }), 'Amlodipine'); // no number yet (never saved)
 });
 
 test('tick button words follow the verb', () => {

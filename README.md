@@ -27,7 +27,7 @@ All Chinese text and audio come from a fixed, reviewable phrase library ([`js/ph
 
 ## Packet numbers instead of stickers
 
-Most families don't have a sticker printer, and many have no printer at all. Instead, each medicine gets a permanent number. The caregiver writes it on the packet with a marker, and the same number appears on the photo in the elder view, on the printed schedule, and in the audio ("三号药，早餐前，吃一粒…"). The elder only needs to match a number, which works even with low literacy. Numbers are never reused or reshuffled, so a marked packet stays correct.
+Most families don't have a sticker printer, and many have no printer at all. Instead, each medicine gets a permanent number. The caregiver writes it on the packet with a marker, and the same number appears on the photo in the elder view, on the printed schedule, and in the audio ("三号药，早餐前，吃一粒…"). The elder only needs to match a number, which works even with low literacy. If a medicine has no Chinese nickname, the elder view and audio call it by its number ("3号药" / "三号药") instead of the English drug name, which is kept in small print for clinic visits. Numbers are never reused or reshuffled, so a marked packet stays correct.
 
 ## How it works
 
@@ -42,7 +42,7 @@ js/extract.js       answer checking before it reaches the form     — pure, tes
 js/storage.js       browser storage + example patient
 js/app.js           views: schedule/print, medicines, routine, elder view
 css/styles.css      large-print screen, phone and A4 print styles
-tests/              119 unit tests
+tests/              120 unit tests
 ```
 
 - **No build step, no server.** Plain HTML/CSS/JavaScript modules, hosted free on GitHub Pages.

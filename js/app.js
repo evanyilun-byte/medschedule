@@ -1,6 +1,6 @@
 import {
   SLOTS, SLOT_ORDER, FREQUENCIES, FOOD, UNITS, PRN_REASONS, WARNINGS, MISC,
-  zhQuantity, enQuantity, timingPhrase, zhNumber, ROUTES, SIDES, needsRoute, doseAction, limitPhrase, takenWords,
+  zhQuantity, enQuantity, timingPhrase, zhNumber, ROUTES, SIDES, needsRoute, doseAction, limitPhrase, takenWords, zhName,
 } from './phrases.js';
 import { buildSchedule, isActive, groupByTime, elderNow, groupStatus } from './scheduler.js';
 import { refillInfo, refillIcs } from './refill.js';
@@ -50,7 +50,7 @@ function persist() {
 }
 
 function medName(med) {
-  return { zh: med.nicknameZh || med.nameEn, en: `${med.nameEn}${med.strength ? ` ${med.strength}` : ''}` };
+  return { zh: zhName(med), en: `${med.nameEn}${med.strength ? ` ${med.strength}` : ''}` };
 }
 
 function photoHtml(med, cls = 'pill-photo') {
@@ -94,7 +94,7 @@ function speakText(med, slot) {
   if (t) parts.push(t.zh);
   else parts.push(PRN_REASONS[med.prnReason]?.zh ?? PRN_REASONS.PRN_GENERIC.zh);
   parts.push(doseAction(med).zh);
-  parts.push(med.nicknameZh || med.nameEn);
+  if (med.nicknameZh) parts.push(med.nicknameZh); // the number already opened the sentence
   if (!slot && limitPhrase(med)) parts.push(limitPhrase(med).zh);
   for (const w of med.warnings || []) if (WARNINGS[w]) parts.push(WARNINGS[w].zh);
   return parts.join('，') + '。';
@@ -314,7 +314,7 @@ function viewMedForm(id) {
         <legend>Medicine</legend>
         <label>Name on label <input name="nameEn" required value="${esc(med.nameEn)}" placeholder="e.g. Metformin"></label>
         <label>Strength <input name="strength" value="${esc(med.strength)}" placeholder="e.g. 500mg"></label>
-        <label>Chinese nickname (shown big, spoken aloud)
+        <label>Chinese nickname (optional — shown big and spoken; if blank, the elder sees the packet number, e.g. 3号药)
           <input name="nicknameZh" value="${esc(med.nicknameZh)}" placeholder="e.g. 降血糖药 / 白色小粒"></label>
         <label>Photo of pill or packet
           <input type="file" name="photo" accept="image/*" capture="environment"></label>
@@ -684,7 +684,7 @@ function viewElder(slotParam) {
     </div>` : ''}
     ${refillDue.length ? `<button class="elder-refill" data-speak-text="${esc(MISC.REFILL_SOON.zh)}">
       🔔 ${MISC.REFILL_SOON.zh} 🔊
-      <small>${refillDue.map((m) => `${m.number}${MISC.NUMBER_SUFFIX.zh} ${esc(medName(m).zh)}`).join('、')} · ${MISC.REFILL_SOON.en}</small>
+      <small>${refillDue.map((m) => `${m.number}${MISC.NUMBER_SUFFIX.zh}${m.nicknameZh ? ` ${esc(m.nicknameZh)}` : ''}`).join('、')} · ${MISC.REFILL_SOON.en}</small>
     </button>` : ''}
     ${auto ? '<details class="other-times"><summary>看其他时间 <small>Other times</small></summary>' : '<a class="button back-now" href="#/elder/now">← 现在 <small>Back to now</small></a>'}
     <nav class="elder-slots">
