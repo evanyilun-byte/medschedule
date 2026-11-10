@@ -1,5 +1,7 @@
 # MedSchedule — Build Plan
 
+> **Note:** this is the original plan, written before building. Some choices changed along the way (plain HTML instead of Next.js, free on-device scanning instead of a paid AI reader, packet numbers instead of stickers). See [INTRODUCTION.md](INTRODUCTION.md) for what was actually built and why.
+
 Turns a person's medicine labels (from any clinic) into one large-print, bilingual (English + Simplified Chinese) daily schedule, with spoken Mandarin audio for the elder.
 
 **Project type:** school / portfolio · **Input:** photo + AI, caregiver confirms · **Users:** caregiver + elder · **Language:** Simplified Chinese + audio

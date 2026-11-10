@@ -6,6 +6,8 @@ MedSchedule turns a person's medicines — from any clinic — into **one large-
 
 **Live app:** https://evanyilun-byte.github.io/medschedule/
 
+**📄 Start here: [Introduction](INTRODUCTION.md)** — the pain point, who has it, how the prototype addresses it (with screenshots), and how I guided the coding agent. Full prompt history: [docs/prompt-log.md](docs/prompt-log.md).
+
 > Prototype for a school/portfolio project. It is an aid, not medical advice — always check with a pharmacist.
 
 ## What it does
