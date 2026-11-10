@@ -1,5 +1,5 @@
 .claude/
-prompt-log.md
+/prompt-log.md
 .DS_Store
 node_modules/
 supabase/.temp/
