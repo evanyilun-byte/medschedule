@@ -1,7 +1,8 @@
 # MedSchedule 吃药时间表: Introduction
 
-**Live prototype:** https://evanyilun-byte.github.io/medschedule/ (works on any phone or computer, no sign-in; press **Load example patient** to try it)
-**Source code:** https://github.com/evanyilun-byte/medschedule
+- **Live prototype:** https://evanyilun-byte.github.io/medschedule/ (works on any phone or computer, no sign-in; press **Load example patient** to try it)
+- **Source code:** https://github.com/evanyilun-byte/medschedule
+- **Full prompt history:** [docs/prompt-log.md](docs/prompt-log.md)
 
 ---
 
