@@ -86,7 +86,7 @@ I built MedSchedule with **Claude Code**, through its desktop app. I set the dir
 
 ### My approach
 
-1. **Start from the problem, not the solution.** My first real prompt described the pain point and the users and asked *"How do you suggest we build this"*, rather than naming a technology.
+1. **Start from the problem, not the solution.** Before opening Claude Code, I compared four healthcare problems with Claude (chat), and rejected a device recall checker because its evidence and data were US-based, not Singapore’s. My first prompt to the coding agent then described the pain point and the users and asked “How do you suggest we build this”, rather than naming a technology.
 2. **Plan before code.** I asked to refine the plan first. The agent asked me four questions (purpose, input method, users, language), and my answers shaped the plan: a school/portfolio project, photo input, caregiver *and* elder users, Simplified Chinese with audio.
 3. **Ask for an evaluation before building.** For most new ideas I asked the agent to evaluate them first and tell me the trade-offs, e.g. *"evaluate if adding the stickers and voice recording will overcomplicate the app"*, or *"for 1, whats the trade off? does it make things a lot more complicated or does it take up battery"*. Only then did I say "build".
 4. **Ask for pushback explicitly.** For my safety fixes I wrote *"tell me your pushbacks if any, before you build"*. That produced better versions of my own ideas (see below).
@@ -110,6 +110,7 @@ I built MedSchedule with **Claude Code**, through its desktop app. I set the dir
 
 ### How I checked the agent's work
 
+- A second AI as an independent reviewer. I had Claude (chat), which had not seen the code being written, review the live app and stress-test the label reader. It found four safety issues (e.g. eye drops spoken as "吃", eat; pre-filled guesses that looked correct). I took them to Claude Code with “tell me your pushbacks before you build”, and the result improved on both versions.
 - I asked for **automated tests** for the logic (now 120) and for the agent to **check every change in a browser**, at phone size, before pushing.
 - The agent found and fixed bugs in its own testing (e.g. medicine numbers being reused after a deletion, and the screen-update rule breaking when the phone's clock changes). I found others by using the app (the medicine name not filling on real photos).
 - The agent pushed every change to GitHub and confirmed the live site's tests passed.
