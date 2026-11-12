@@ -10,7 +10,7 @@
 
 In Singapore, medicine labels from polyclinics, GP clinics, hospitals and pharmacies are almost always printed **in English only**, and the instructions are often vague or abbreviated: "1 tab BD pc", "twice daily, after food", "take when necessary".
 
-Many older Singaporeans, especially those who grew up reading Chinese, **cannot read these labels**. They depend on someone else to tell them what each medicine is and when to take it. That causes three problems:
+Many older Singaporean patients, especially those who grew up reading Chinese, **cannot read these labels**. They depend on someone else to tell them what each medicine is and when to take it. That causes three problems:
 
 1. **Translation is done by hand, over and over.** Caregivers write Chinese notes on every packet, and rewrite them every time a long-term medicine is refilled.
 2. **Instructions stay vague.** "Twice daily after food" still has to be turned into actual times, and different family members may do it differently.
@@ -82,7 +82,7 @@ MedSchedule turns a person's medicine labels, from any clinic, into **one large-
 
 ## 4. How I prompted and guided the coding agent
 
-I built MedSchedule with **Claude Code**, Anthropic's coding agent, through its desktop app. I didn't write the code by hand. My job was to set the direction, make the decisions, push back, and test. The full list of my prompts is in [docs/prompt-log.md](docs/prompt-log.md). I asked the agent to keep it from the very first message.
+I built MedSchedule with **Claude Code**, through its desktop app. I set the direction, make the decisions, push back, and test. The full list of my prompts is in [docs/prompt-log.md](docs/prompt-log.md). I asked the agent to keep it from the very first message.
 
 ### My approach
 
