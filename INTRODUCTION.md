@@ -118,4 +118,4 @@ I built MedSchedule with **Claude Code**, through its desktop app. I set the dir
 
 ### What I'd do next
 
-Test with 3–5 elder and caregiver pairs, measure scanning accuracy on about 30 real labels, have a native speaker or pharmacist review the Chinese phrases, and make the app installable and offline. The longer-term vision (accounts, phone reminders, links to GPs) is described in the roadmap.
+Test with 3–5 elder and caregiver pairs, measure scanning accuracy on about 30 real labels, have a native speaker or pharmacist review the Chinese phrases, and make the app installable and offline. Longer term: accounts and sync, phone reminders, then a clinic pilot. Singapore’s Health Information Act will require all licensed providers to contribute to the National Electronic Health Record (NEHR) from early 2027, so the long-term value is the elder-friendly layer on top of that data, not collecting the data.
